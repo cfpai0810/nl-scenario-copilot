@@ -1,0 +1,7 @@
+line_item,driver_type,driver_value,note
+Revenue,seasonal_yoy,0.12,12% annual YoY growth; seasonality auto-derived from 2025 calendar year
+COGS,margin_pct,0.418,41.8% of revenue
+Personnel Cost,headcount_driven,0.0,Driven by headcount_schedule.csv; starting headcount from operational actuals
+Marketing Spend,cac_driven,0.0,Driven by customer_targets.csv; new customers x CAC plus fixed campaign
+IT Infrastructure,fixed,45000.0,Fixed contract through Dec 2026
+R&D Expense,growth_pct,0.06,"6% MoM investment ramp, board approved"

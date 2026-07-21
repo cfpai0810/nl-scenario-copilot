@@ -1,0 +1,10 @@
+.env
+venv/
+output/*.txt
+output/*.pdf
+output/*.csv
+output/audit_log.jsonl
+__pycache__/
+*.pyc
+cv_bullets.txt
+debrief_log.txt

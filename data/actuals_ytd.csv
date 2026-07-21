@@ -1,0 +1,109 @@
+period,line_item,actual,status
+2025-01,Revenue,980000,locked
+2025-01,COGS,401800,locked
+2025-01,Personnel Cost,198400,locked
+2025-01,Marketing Spend,59500,locked
+2025-01,IT Infrastructure,45000,locked
+2025-01,R&D Expense,140000,locked
+2025-02,Revenue,1010000,locked
+2025-02,COGS,414100,locked
+2025-02,Personnel Cost,204600,locked
+2025-02,Marketing Spend,61800,locked
+2025-02,IT Infrastructure,45000,locked
+2025-02,R&D Expense,145000,locked
+2025-03,Revenue,1080000,locked
+2025-03,COGS,443900,locked
+2025-03,Personnel Cost,204600,locked
+2025-03,Marketing Spend,68700,locked
+2025-03,IT Infrastructure,45000,locked
+2025-03,R&D Expense,150000,locked
+2025-04,Revenue,1120000,locked
+2025-04,COGS,461400,locked
+2025-04,Personnel Cost,210800,locked
+2025-04,Marketing Spend,71000,locked
+2025-04,IT Infrastructure,45000,locked
+2025-04,R&D Expense,156000,locked
+2025-05,Revenue,1180000,locked
+2025-05,COGS,487300,locked
+2025-05,Personnel Cost,217000,locked
+2025-05,Marketing Spend,76750,locked
+2025-05,IT Infrastructure,45000,locked
+2025-05,R&D Expense,162000,locked
+2025-06,Revenue,1150000,locked
+2025-06,COGS,475000,locked
+2025-06,Personnel Cost,223200,locked
+2025-06,Marketing Spend,73300,locked
+2025-06,IT Infrastructure,45000,locked
+2025-06,R&D Expense,168000,locked
+2025-07,Revenue,1050000,locked
+2025-07,COGS,434700,locked
+2025-07,Personnel Cost,223200,locked
+2025-07,Marketing Spend,65250,locked
+2025-07,IT Infrastructure,45000,locked
+2025-07,R&D Expense,174000,locked
+2025-08,Revenue,1020000,locked
+2025-08,COGS,422300,locked
+2025-08,Personnel Cost,229400,locked
+2025-08,Marketing Spend,62950,locked
+2025-08,IT Infrastructure,45000,locked
+2025-08,R&D Expense,180000,locked
+2025-09,Revenue,1160000,locked
+2025-09,COGS,481400,locked
+2025-09,Personnel Cost,235600,locked
+2025-09,Marketing Spend,75600,locked
+2025-09,IT Infrastructure,45000,locked
+2025-09,R&D Expense,186000,locked
+2025-10,Revenue,1220000,locked
+2025-10,COGS,506300,locked
+2025-10,Personnel Cost,241800,locked
+2025-10,Marketing Spend,82500,locked
+2025-10,IT Infrastructure,45000,locked
+2025-10,R&D Expense,193000,locked
+2025-11,Revenue,1320000,locked
+2025-11,COGS,549100,locked
+2025-11,Personnel Cost,248000,locked
+2025-11,Marketing Spend,91700,locked
+2025-11,IT Infrastructure,45000,locked
+2025-11,R&D Expense,200000,locked
+2025-12,Revenue,1400000,locked
+2025-12,COGS,582400,locked
+2025-12,Personnel Cost,248000,locked
+2025-12,Marketing Spend,80200,locked
+2025-12,IT Infrastructure,45000,locked
+2025-12,R&D Expense,208000,locked
+2026-01,Revenue,1100000,locked
+2026-01,COGS,458700,locked
+2026-01,Personnel Cost,260000,locked
+2026-01,Marketing Spend,73000,locked
+2026-01,IT Infrastructure,45000,locked
+2026-01,R&D Expense,216000,locked
+2026-02,Revenue,1130000,locked
+2026-02,COGS,471200,locked
+2026-02,Personnel Cost,266500,locked
+2026-02,Marketing Spend,75400,locked
+2026-02,IT Infrastructure,45000,locked
+2026-02,R&D Expense,222000,locked
+2026-03,Revenue,1210000,locked
+2026-03,COGS,505800,locked
+2026-03,Personnel Cost,266500,locked
+2026-03,Marketing Spend,82600,locked
+2026-03,IT Infrastructure,45000,locked
+2026-03,R&D Expense,228000,locked
+2026-04,Revenue,1255000,locked
+2026-04,COGS,524600,locked
+2026-04,Personnel Cost,266500,locked
+2026-04,Marketing Spend,87400,locked
+2026-04,IT Infrastructure,45000,locked
+2026-04,R&D Expense,235000,locked
+2026-05,Revenue,1320000,locked
+2026-05,COGS,551800,locked
+2026-05,Personnel Cost,273000,locked
+2026-05,Marketing Spend,94600,locked
+2026-05,IT Infrastructure,45000,locked
+2026-05,R&D Expense,242000,locked
+2026-06,Revenue,1290000,locked
+2026-06,COGS,539200,locked
+2026-06,Personnel Cost,273000,locked
+2026-06,Marketing Spend,89800,locked
+2026-06,IT Infrastructure,45000,locked
+2026-06,R&D Expense,252000,locked
