@@ -51,6 +51,9 @@ LINE_ITEMS = {
     "R&D Expense":       "growth_pct",
 }
 
+# The P&L row label the reused engine uses for operating profit
+EBIT_LABEL = "Operating Profit (EBIT)"
+
 # ── Scenario operations and validation rules ─────────────────────────────────
 # Each operation lists the driver types it is legal for, the value type, and
 # sane bounds. The validator enforces these before anything runs.
