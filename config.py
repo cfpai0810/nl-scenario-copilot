@@ -68,7 +68,7 @@ VALUE_DRIVER_TYPES    = {"seasonal_yoy", "margin_pct", "growth_pct", "fixed"}
 SCHEDULE_DRIVER_TYPES = {"headcount_driven", "cac_driven"}
 
 # Preset bands offered when a spread is set by band rather than from history
-PRESET_BANDS = {"value": [0.03, 0.05], "schedule": [0.20, 0.40]}
+PRESET_BANDS = {"value": [0.03, 0.05], "schedule": [0.50, 1.00]}
 
 # The P&L row label the reused engine uses for operating profit
 EBIT_LABEL = "Operating Profit (EBIT)"
