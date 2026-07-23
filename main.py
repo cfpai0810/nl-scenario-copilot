@@ -97,6 +97,8 @@ def run_scenario(request, base, ask=input, confirm=input):
             if status == "ILLEGAL":
                 print("     - {}".format(reason))
         print("     Try one of the supported operations on a valid line item.")
+        write_audit(request, scenario, [], classification, None, None, [],
+                    outcome="refused")
         return None
 
     if classification == "AMBIGUOUS":
@@ -106,6 +108,8 @@ def run_scenario(request, base, ask=input, confirm=input):
                 print("     (You said: {})".format(answer))
                 print("     For this Pass 1 run, ambiguous changes are not "
                       "auto-applied. Please rephrase the request.")
+                write_audit(request, scenario, [], classification, None, None, [],
+                            outcome="ambiguous")
                 return None
 
     normalised = [r[2] for r in results if r[0] == "OK"]
@@ -119,6 +123,8 @@ def run_scenario(request, base, ask=input, confirm=input):
     decision = confirm("Run this scenario? [y/n]: ").strip().lower()
     if decision != "y":
         print("[CANCELLED] Scenario not run.")
+        write_audit(request, scenario, normalised, classification, None, None, [],
+                    outcome="cancelled")
         return None
 
     # STEP 3: apply to copies, run base + scenario, full-P&L deltas
@@ -157,7 +163,10 @@ def run_scenario(request, base, ask=input, confirm=input):
 
     # audit, then the report and the working artefact
     write_audit(request, scenario, normalised, classification,
-                analysis_type, headline, held_constant)
+                analysis_type, headline, held_constant,
+                parse_tokens=ptok_in + ptok_out,
+                explain_tokens=etok_in + etok_out,
+                outcome="completed")
     write_pdf(request, echo, deltas, analysis_type, held_constant, explanation, assumption_rows, takeaways)
     export_deltas_csv(deltas, request, echo, held_constant)
 

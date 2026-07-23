@@ -245,9 +245,11 @@ def call_claude_explain(request, echo, headline, analysis_type, held_constant, b
     return text, response.usage.input_tokens, response.usage.output_tokens
 
 
-def write_audit(request, parsed, normalised, classification,
-                analysis_type, headline, held_constant):
-    """Append one audit record. headline is the Revenue and EBIT delta dict."""
+def write_audit(request, parsed, normalised, classification, analysis_type,
+                headline, held_constant, parse_tokens=None,
+                explain_tokens=None, stop_reason=None, outcome="completed"):
+    """Append one audit record. outcome is completed, refused, ambiguous, or
+    cancelled, so a request that never ran still leaves a trace."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc)
 
@@ -255,21 +257,33 @@ def write_audit(request, parsed, normalised, classification,
         with open(path, "rb") as fh:
             return "sha256:" + hashlib.sha256(fh.read()).hexdigest()
 
-    rev_delta  = headline["Revenue"]["delta"] if headline.get("Revenue") else None
-    ebit_delta = headline["EBIT"]["delta"]    if headline.get("EBIT")    else None
+    headline = headline or {}
+    rev  = headline.get("Revenue")
+    ebit = headline.get("EBIT")
+
+    requires_review = (
+        outcome == "completed"
+        or classification in ("AMBIGUOUS", "TOO_MANY")
+        or stop_reason == "max_tokens"
+    )
 
     audit = {
         "run_id":          now.isoformat(),
         "project":         "nl-scenario-copilot",
         "entity":          DEFAULT_ENTITY,
+        "outcome":         outcome,
         "raw_request":     request,
         "parsed_scenario": parsed,
         "classification":  classification,
         "analysis_type":   analysis_type,
         "changes_applied": normalised,
-        "revenue_delta":   rev_delta,
-        "ebit_delta":      ebit_delta,
+        "revenue_delta":   rev["delta"]  if rev  else None,
+        "ebit_delta":      ebit["delta"] if ebit else None,
         "held_constant":   held_constant,
+        "model":           MODEL,
+        "parse_tokens":    parse_tokens,
+        "explain_tokens":  explain_tokens,
+        "stop_reason":     stop_reason,
         "pdf_file":        None,
         "csv_file":        None,
         "input_hashes": {
@@ -279,11 +293,12 @@ def write_audit(request, parsed, normalised, classification,
             "headcount":   file_hash(HEADCOUNT_FILE),
             "customer":    file_hash(CUSTOMER_FILE),
         },
+        "requires_review": requires_review,
         "human_reviewed":  False,
     }
     with open(AUDIT_LOG, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(audit) + "\n")
-    print("\n[OK] Audit record written to {}".format(AUDIT_LOG.name))
+    print("\n[OK] Audit record written ({})".format(outcome))
     return audit
 
 
@@ -858,6 +873,13 @@ def write_three_case_audit(spreads, delta_rows, basis_text):
         "ebit_pessimistic":  ebit["Pessimistic"] if ebit else None,
         "ebit_realistic":    ebit["Realistic"] if ebit else None,
         "ebit_optimistic":   ebit["Optimistic"] if ebit else None,
+        "model":         MODEL,
+        "held_constant": [
+            "Drivers not selected do not move in this run.",
+            "The realistic case is the base plan, so it matches the base by design.",
+            "This model does not link marketing or customer changes to revenue, "
+            "which is forecast on its own trend.",
+        ],
         "pdf_file":      None,
         "csv_file":      None,
         "input_hashes": {
@@ -867,6 +889,7 @@ def write_three_case_audit(spreads, delta_rows, basis_text):
             "headcount":   file_hash(HEADCOUNT_FILE),
             "customer":    file_hash(CUSTOMER_FILE),
         },
+        "requires_review": True,
         "human_reviewed": False,
     }
     with open(AUDIT_LOG, "a", encoding="utf-8") as fh:
