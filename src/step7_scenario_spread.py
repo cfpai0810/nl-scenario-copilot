@@ -3,8 +3,9 @@
 # =============================================================================
 # Derives pessimistic / realistic / optimistic values for a driver, using
 # either historical data (for derivable driver types) or a preset band.
-# All three functions return the same shape: a dict with pessimistic,
-# realistic, optimistic, narrow flag, width, and method.
+# Direction-aware: "pessimistic" describes the OUTCOME for EBIT, not the
+# arithmetic direction. For Revenue, pessimistic = lower growth. For a cost
+# driver like COGS, pessimistic = higher cost.
 #
 # The spread is always in driver-value units (fractions, not percentages).
 # Python computes; nothing here calls Claude.
@@ -45,56 +46,57 @@ def yoy_growth_rates(actuals_df, line_item):
     return rates
 
 
-def derive_spread(driver_type, base_value, history_rates):
-    """Data-derived three-case spread from historical rates.
-    Returns a dict with the three values, a narrow flag, and the method.
-    Returns None for non-derivable driver types or insufficient history."""
-    if driver_type not in DERIVABLE_TYPES:
+def _assign(base_value, delta, direction):
+    """Assign the three cases by OUTCOME, not by arithmetic sign. For a
+    higher-is-better driver the optimistic case is above the base; for a cost
+    driver it is below."""
+    if direction == "higher_better":
+        return (base_value - delta, base_value, base_value + delta)
+    return (base_value + delta, base_value, base_value - delta)
+
+
+def derive_spread(driver_type, base_value, history_rates, direction):
+    """Data-derived spread: base plus and minus one historical standard
+    deviation, labelled by outcome. Returns a dict, or None if the driver has
+    no usable history. Flags a spread too narrow to be useful."""
+    if driver_type not in DERIVABLE_TYPES or len(history_rates) < 2:
         return None
-    if not history_rates or len(history_rates) < 2:
-        return None
-
-    mean = statistics.mean(history_rates)
-    std  = statistics.stdev(history_rates)
-
-    pessimistic = mean - 2 * std
-    optimistic  = mean + 2 * std
-    realistic   = base_value
-
-    width  = optimistic - pessimistic
-    narrow = width < NARROW_THRESHOLD
-
+    sd = statistics.stdev(history_rates)
+    pess, real, opt = _assign(base_value, sd, direction)
     return {
-        "pessimistic": round(pessimistic, 4),
-        "realistic":   round(realistic, 4),
-        "optimistic":  round(optimistic, 4),
-        "narrow":      narrow,
-        "width":       round(width, 4),
-        "method":      "data-derived",
+        "mode":        "data-derived",
+        "std_dev":     sd,
+        "pessimistic": pess,
+        "realistic":   real,
+        "optimistic":  opt,
+        "narrow":      (2 * sd) < NARROW_THRESHOLD,
+        "basis": ("one historical standard deviation ({:.2%}) either side of "
+                  "the base plan, from the variation observed in the actuals"
+                  ).format(sd),
     }
 
 
-def preset_spread(base_value, band):
-    """Standard band spread: base +/- band. Used when the driver is not
-    derivable (fixed, schedule-driven) or when the derived spread is too
-    narrow and the user opts for a wider band."""
+def preset_spread(base_value, band, direction):
+    """Preset band: base plus and minus a fixed band, labelled by outcome."""
+    pess, real, opt = _assign(base_value, band, direction)
     return {
-        "pessimistic": round(base_value - band, 4),
-        "realistic":   round(base_value, 4),
-        "optimistic":  round(base_value + band, 4),
+        "mode":        "preset-band",
+        "band":        band,
+        "pessimistic": pess,
+        "realistic":   real,
+        "optimistic":  opt,
         "narrow":      False,
-        "width":       round(2 * band, 4),
-        "method":      "preset-band",
+        "basis":       "a chosen band of {} either side of the base plan".format(band),
     }
 
 
 def manual_spread(pessimistic, realistic, optimistic):
-    """User-provided values verbatim. No derivation, no adjustment."""
+    """User enters all three case values directly, labelled as they wish."""
     return {
+        "mode":        "manual",
         "pessimistic": pessimistic,
         "realistic":   realistic,
         "optimistic":  optimistic,
         "narrow":      False,
-        "width":       round(optimistic - pessimistic, 4),
-        "method":      "manual",
+        "basis":       "values entered manually",
     }

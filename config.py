@@ -51,6 +51,25 @@ LINE_ITEMS = {
     "R&D Expense":       "growth_pct",
 }
 
+# Does a HIGHER value for this driver help or hurt EBIT? This decides which
+# end of a spread is labelled pessimistic and which optimistic.
+DRIVER_DIRECTION = {
+    "Revenue":           "higher_better",   # more growth helps
+    "COGS":              "higher_worse",    # a bigger margin is more cost
+    "Personnel Cost":    "higher_worse",    # more hires is more cost
+    "Marketing Spend":   "higher_worse",    # more spend, no revenue link in this model
+    "IT Infrastructure": "higher_worse",    # a bigger fixed cost
+    "R&D Expense":       "higher_worse",    # a faster ramp is more cost
+}
+
+# Driver kinds: a value driver's case IS the new driver_value; a schedule
+# driver's case is a SCALE FACTOR on the schedule quantity (1.0 = unchanged).
+VALUE_DRIVER_TYPES    = {"seasonal_yoy", "margin_pct", "growth_pct", "fixed"}
+SCHEDULE_DRIVER_TYPES = {"headcount_driven", "cac_driven"}
+
+# Preset bands offered when a spread is set by band rather than from history
+PRESET_BANDS = {"value": [0.03, 0.05], "schedule": [0.20, 0.40]}
+
 # The P&L row label the reused engine uses for operating profit
 EBIT_LABEL = "Operating Profit (EBIT)"
 
