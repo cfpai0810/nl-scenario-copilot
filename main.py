@@ -166,14 +166,289 @@ def run_scenario(request, base, ask=input, confirm=input):
 
 
 # =============================================================================
-# MAIN — the interactive menu (never imported by tests)
+# MENU STATE MACHINE — never imported by tests
 # =============================================================================
+from config import (
+    DRIVER_DIRECTION, VALUE_DRIVER_TYPES, SCHEDULE_DRIVER_TYPES, PRESET_BANDS,
+)
+from src.step7_scenario_spread import (
+    derive_spread, preset_spread, manual_spread, history_rates_for,
+)
+from src.step8_three_case import (
+    run_three_case, multi_case_deltas, case_ebit_summary, spread_base_for,
+    CASE_ORDER,
+)
+
 PRESETS = {
-    "1": "Cut marketing spend by 20 percent",
-    "2": "Cut marketing spend by 20 percent and delay hiring by one month",
-    "3": "Set revenue growth to 8 percent",
-    "4": "Increase headcount hires by 50 percent",
+    "a": "Cut marketing spend by 20 percent",
+    "b": "Set revenue growth to 8 percent",
+    "c": "Cut marketing spend by 20 percent and delay hiring by one month",
 }
+
+DRIVER_MENU = [
+    ("Revenue",           "Revenue growth"),
+    ("COGS",              "COGS margin"),
+    ("R&D Expense",       "R&D growth"),
+    ("IT Infrastructure", "IT Infrastructure (fixed cost)"),
+    ("Personnel Cost",    "Personnel hires"),
+    ("Marketing Spend",   "Marketing customers"),
+]
+
+
+def _fmt(line_item, value):
+    """Show a case value in the driver's own units."""
+    dtype = LINE_ITEMS[line_item]
+    if dtype in SCHEDULE_DRIVER_TYPES:
+        return "{:.2f}x".format(value)
+    if dtype == "fixed":
+        return "EUR {:,.0f}".format(value)
+    return "{:.2%}".format(value)
+
+
+def pick_drivers(ask):
+    """Multi-select: one or more drivers to flex together."""
+    print("\nWhich drivers do you want to flex? You can pick several.")
+    for i, (_, label) in enumerate(DRIVER_MENU, start=1):
+        print("  [{}] {}".format(i, label))
+    print("  [b] back")
+    raw = ask("Enter numbers separated by commas (e.g. 1,2): ").strip().lower()
+    if raw == "b":
+        return "back"
+    picked = []
+    for part in raw.split(","):
+        part = part.strip()
+        if part.isdigit() and 1 <= int(part) <= len(DRIVER_MENU):
+            item = DRIVER_MENU[int(part) - 1][0]
+            if item not in picked:
+                picked.append(item)
+    if not picked:
+        print("No valid drivers selected.")
+        return None
+    if len(picked) > 3:
+        print("Keep it to three drivers or fewer for a readable scenario.")
+        return None
+    return picked
+
+
+def _band_for(line_item, level):
+    """The preset band for a driver, at a given level (0 moderate, 1 wide)."""
+    kind = "schedule" if LINE_ITEMS[line_item] in SCHEDULE_DRIVER_TYPES else "value"
+    return PRESET_BANDS[kind][level]
+
+
+def _show_spreads(spreads):
+    print("\n{:<20}{:>16}{:>16}{:>16}".format(
+        "Driver", "Pessimistic", "Realistic", "Optimistic"))
+    for line_item, sp in spreads.items():
+        print("{:<20}{:>16}{:>16}{:>16}".format(
+            line_item,
+            _fmt(line_item, sp["pessimistic"]),
+            _fmt(line_item, sp["realistic"]),
+            _fmt(line_item, sp["optimistic"])))
+
+
+def auto_populate_multi(line_items, base, ask):
+    """Derive each driver's cases from history where possible, else a band.
+    Shows them all, then one decision: accept, widen, or back."""
+    spreads = {}
+    any_narrow = False
+    for line_item in line_items:
+        dtype     = LINE_ITEMS[line_item]
+        direction = DRIVER_DIRECTION[line_item]
+        base_val  = spread_base_for(line_item, base["drivers_df"])
+        rates     = history_rates_for(line_item, dtype, base["actuals_df"])
+        sp        = derive_spread(dtype, base_val, rates, direction)
+        if sp is None:
+            sp = preset_spread(base_val, _band_for(line_item, 0), direction)
+        elif sp["narrow"]:
+            any_narrow = True
+        spreads[line_item] = sp
+
+    _show_spreads(spreads)
+    if any_narrow:
+        print("\nSome of these come from very stable history, so the cases sit "
+              "close together.")
+    print("\n  [y] use these cases")
+    print("  [w] widen to a standard band instead")
+    print("  [b] back")
+    choice = ask("> ").strip().lower()
+    if choice == "b":
+        return "back"
+    if choice == "w":
+        print("\n  [1] moderate band   [2] wide band   [b] back")
+        lvl = ask("> ").strip().lower()
+        if lvl == "b":
+            return "back"
+        if lvl not in ("1", "2"):
+            print("Not a valid choice.")
+            return None
+        level = int(lvl) - 1
+        widened = {}
+        for line_item in line_items:
+            base_val  = spread_base_for(line_item, base["drivers_df"])
+            direction = DRIVER_DIRECTION[line_item]
+            widened[line_item] = preset_spread(
+                base_val, _band_for(line_item, level), direction)
+        _show_spreads(widened)
+        return widened
+    if choice == "y":
+        return spreads
+    print("Not a valid choice.")
+    return None
+
+
+def manual_entry_multi(line_items, base, ask):
+    """Ask, per driver, for its three case values or a band."""
+    print("\nHow do you want to enter the cases?")
+    print("  [1] Enter each case value, per driver")
+    print("  [2] Enter a band per driver")
+    print("  [b] back")
+    mode = ask("> ").strip().lower()
+    if mode == "b":
+        return "back"
+    if mode not in ("1", "2"):
+        print("Not a valid choice.")
+        return None
+
+    spreads = {}
+    for line_item in line_items:
+        dtype     = LINE_ITEMS[line_item]
+        direction = DRIVER_DIRECTION[line_item]
+        base_val  = spread_base_for(line_item, base["drivers_df"])
+        is_pct    = dtype not in SCHEDULE_DRIVER_TYPES and dtype != "fixed"
+        unit      = "percent" if is_pct else (
+                    "multiplier" if dtype in SCHEDULE_DRIVER_TYPES else "euros")
+
+        def read(prompt, default=None):
+            raw = ask(prompt).strip()
+            if raw == "" and default is not None:
+                return default
+            try:
+                v = float(raw)
+            except ValueError:
+                return None
+            return v / 100.0 if is_pct else v
+
+        print("\n{}  (base is {})".format(line_item, _fmt(line_item, base_val)))
+        if mode == "1":
+            p = read("  Pessimistic ({}): ".format(unit))
+            r = read("  Realistic ({}, enter for base): ".format(unit), default=base_val)
+            o = read("  Optimistic ({}): ".format(unit))
+            if p is None or r is None or o is None:
+                print("Those need to be numbers.")
+                return None
+            if len({p, r, o}) < 3:
+                print("The three cases must be different values.")
+                return None
+            spreads[line_item] = manual_spread(p, r, o)
+        else:
+            band = read("  Band either side of the base ({}): ".format(unit))
+            if band is None or band <= 0:
+                print("The band must be a positive number.")
+                return None
+            spreads[line_item] = preset_spread(base_val, band, direction)
+
+    _show_spreads(spreads)
+    return spreads
+
+
+def confirm_cases_multi(spreads, confirm):
+    print("\nBasis: {}".format(
+        "; ".join(sorted({sp["basis"] for sp in spreads.values()}))))
+    return confirm("Run all three cases? [y/n]: ").strip().lower() == "y"
+
+
+def path_three_case(base, ask=input, confirm=input):
+    """The guided three-case flow: drivers, method, cases, confirm, run."""
+    while True:
+        line_items = pick_drivers(ask)
+        if line_items == "back":
+            return
+        if line_items is None:
+            continue
+
+        print("\nHow do you want to set the three cases?")
+        print("  [1] Auto-populate (I calculate them for you)")
+        print("  [2] Manual (you provide the numbers)")
+        print("  [b] back")
+        method = ask("> ").strip().lower()
+        if method == "b":
+            continue
+
+        if method == "1":
+            spreads = auto_populate_multi(line_items, base, ask)
+        elif method == "2":
+            spreads = manual_entry_multi(line_items, base, ask)
+        else:
+            print("Not a valid choice.")
+            continue
+
+        if spreads == "back" or spreads is None:
+            continue
+
+        if not confirm_cases_multi(spreads, confirm):
+            print("[CANCELLED] Not run.")
+            return
+
+        cases = {}
+        for case in ("pessimistic", "realistic", "optimistic"):
+            cases[case] = {li: sp[case] for li, sp in spreads.items()}
+
+        results = run_three_case(base, cases)
+        rows    = multi_case_deltas(results)
+        ebit    = case_ebit_summary(rows)
+
+        print("\n{:<26}{:>13}{:>13}{:>13}{:>13}".format(
+            "Line", "Base", "Pessimistic", "Realistic", "Optimistic"))
+        for r in rows:
+            print("{:<26}{:>13,.0f}{:>13,.0f}{:>13,.0f}{:>13,.0f}".format(
+                r["line"], r["base"], r["Pessimistic"], r["Realistic"], r["Optimistic"]))
+        if ebit:
+            print("\nEBIT versus base:")
+            for name in CASE_ORDER:
+                print("  {:<12} {:+,.0f}".format(name, ebit[name + "_delta"]))
+
+        from src.step6_explainer import (
+            build_three_case_takeaways, call_claude_explain_three_case,
+            write_three_case_pdf, export_three_case_csv, write_three_case_audit,
+        )
+        basis_text = "; ".join(sorted({sp["basis"] for sp in spreads.values()}))
+        takeaways  = build_three_case_takeaways(rows, list(spreads.keys()))
+        print("\nKEY TAKEAWAYS:")
+        for t in takeaways:
+            print("  - {}".format(t))
+
+        explanation, _, _ = call_claude_explain_three_case(rows, spreads, basis_text)
+        print("\n" + "=" * 64)
+        print("ANALYSIS")
+        print("=" * 64)
+        print(explanation)
+        print("=" * 64)
+
+        write_three_case_audit(spreads, rows, basis_text)
+        write_three_case_pdf(spreads, rows, explanation, takeaways, basis_text)
+        export_three_case_csv(rows)
+        return
+
+
+def path_single(base, ask=input, confirm=input):
+    print("\nDescribe your what-if, or pick an example:")
+    for k, v in PRESETS.items():
+        print("  [{}] {}".format(k, v))
+    print("  [t] type your own")
+    print("  [b] back")
+    choice = ask("> ").strip().lower()
+    if choice == "b":
+        return
+    if choice == "t":
+        request = ask("Describe your what-if: ").strip()
+        if request:
+            run_scenario(request, base, ask=ask, confirm=confirm)
+    elif choice in PRESETS:
+        run_scenario(PRESETS[choice], base, ask=ask, confirm=confirm)
+    else:
+        print("Not a valid choice.")
+
 
 if __name__ == "__main__":
     base = load_base_model()
@@ -182,21 +457,17 @@ if __name__ == "__main__":
         print("\n" + "-" * 64)
         print("NL SCENARIO MODELLING COPILOT")
         print("-" * 64)
-        print("  [1-4] pick a preset example")
-        print("  [t]   type your own what-if")
-        print("  [q]   quit")
-        for k, v in PRESETS.items():
-            print("    {}. {}".format(k, v))
+        print("  [1] Run a single what-if (plain English)")
+        print("  [2] Run a three-case analysis (pessimistic, realistic, optimistic)")
+        print("  [q] Quit")
 
         choice = input("> ").strip().lower()
         if choice == "q":
             print("Goodbye.")
             break
-        elif choice == "t":
-            request = input("Describe your what-if: ").strip()
-            if request:
-                run_scenario(request, base)
-        elif choice in PRESETS:
-            run_scenario(PRESETS[choice], base)
+        elif choice == "1":
+            path_single(base)
+        elif choice == "2":
+            path_three_case(base)
         else:
             print("Not a valid choice.")

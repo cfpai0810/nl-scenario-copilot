@@ -32,19 +32,21 @@ def spread_base_for(line_item, drivers_df):
     return float(row.iloc[0])
 
 
-def _apply_case(base, line_item, case_value):
-    """Return a model with one case applied to DEEP COPIES. Base untouched."""
-    dtype     = LINE_ITEMS[line_item]
+def _apply_case(base, case_values):
+    """Apply ALL drivers for one case to DEEP COPIES. case_values is a dict
+    of {line_item: value}. The base is never touched."""
     drivers   = base["drivers_df"].copy(deep=True)
     headcount = base["headcount_df"].copy(deep=True)
     customer  = base["customer_df"].copy(deep=True)
 
-    if dtype in VALUE_DRIVER_TYPES:
-        drivers.loc[drivers["line_item"] == line_item, "driver_value"] = case_value
-    elif dtype == "headcount_driven":
-        headcount["new_hires"] = headcount["new_hires"] * case_value
-    elif dtype == "cac_driven":
-        customer["target_new_customers"] = customer["target_new_customers"] * case_value
+    for line_item, value in case_values.items():
+        dtype = LINE_ITEMS[line_item]
+        if dtype in VALUE_DRIVER_TYPES:
+            drivers.loc[drivers["line_item"] == line_item, "driver_value"] = value
+        elif dtype == "headcount_driven":
+            headcount["new_hires"] = headcount["new_hires"] * value
+        elif dtype == "cac_driven":
+            customer["target_new_customers"] = customer["target_new_customers"] * value
 
     model = dict(base)
     model["drivers_df"]   = drivers
@@ -53,13 +55,12 @@ def _apply_case(base, line_item, case_value):
     return model
 
 
-def run_three_case(base, line_item, cases):
-    """cases is a dict with pessimistic, realistic, optimistic values.
-    Returns {'Base': pnl, 'Pessimistic': pnl, 'Realistic': pnl, 'Optimistic': pnl}."""
+def run_three_case(base, cases):
+    """cases is {'pessimistic': {line_item: value, ...}, 'realistic': {...},
+    'optimistic': {...}}. Runs the base plus each case."""
     results = {"Base": run_forecast(base)}
     for name in CASE_ORDER:
-        value = cases[name.lower()]
-        results[name] = run_forecast(_apply_case(base, line_item, value))
+        results[name] = run_forecast(_apply_case(base, cases[name.lower()]))
     return results
 
 

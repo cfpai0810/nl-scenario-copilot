@@ -30,7 +30,7 @@ from reportlab.platypus      import (
 from config import (
     ANTHROPIC_API_KEY, MODEL, MAX_TOKENS, OUTPUT_DIR, AUDIT_LOG, DEFAULT_ENTITY,
     ACTUALS_FILE, DRIVERS_FILE, OPERATIONAL_FILE, HEADCOUNT_FILE, CUSTOMER_FILE,
-    EBIT_LABEL,
+    EBIT_LABEL, LINE_ITEMS, SCHEDULE_DRIVER_TYPES,
 )
 
 # ── Page geometry and palette (same system as Projects 1 to 3) ────────────────
@@ -559,3 +559,317 @@ def export_deltas_csv(deltas, request, echo, held_constant):
     print("[OK] Deltas CSV exported")
     print("     CSV:  {}".format(csv_path.name))
     return csv_path
+
+
+# =============================================================================
+# THREE-CASE REPORT — multi-column PDF, CSV, audit, explanation
+# =============================================================================
+CASE_NAMES = ["Pessimistic", "Realistic", "Optimistic"]
+
+S_CARD = ParagraphStyle("Card", fontName="Helvetica", fontSize=9,
+            textColor=MUTED, leading=12)
+
+
+def format_case_value(line_item, value):
+    """Show a case value in the driver's own units. Schedule drivers carry a
+    scale factor, value drivers carry their real driver value."""
+    dtype = LINE_ITEMS[line_item]
+    if dtype in SCHEDULE_DRIVER_TYPES:
+        return "{:.2f}x".format(value)
+    if dtype == "fixed":
+        return "EUR {:,.0f}".format(value)
+    return "{:.2%}".format(value)
+
+
+def _assumptions_table_multi(spreads):
+    """Drivers down the side, cases across the top."""
+    hdr = [Paragraph("<b>Driver</b>", S_TBL_HDR),
+           Paragraph("<b>Base</b>", S_TBL_HDR)]
+    for name in CASE_NAMES:
+        hdr.append(Paragraph("<b>{}</b>".format(name), S_TBL_HDR))
+    rows = [hdr]
+
+    for line_item, sp in spreads.items():
+        base_val = sp["realistic"]
+        cells = [Paragraph(_esc(line_item), S_TBL),
+                 Paragraph(_esc(format_case_value(line_item, base_val)), S_TBL)]
+        for key, name in zip(("pessimistic", "realistic", "optimistic"), CASE_NAMES):
+            txt = _esc(format_case_value(line_item, sp[key]))
+            if name == "Realistic":
+                cells.append(Paragraph(txt, S_TBL))
+            else:
+                cells.append(Paragraph(
+                    '<font color="#2D6A9F">{}</font>'.format(txt), S_TBL))
+        rows.append(cells)
+
+    col = (PAGE_W - 3.4*cm) / 4
+    t = Table(rows, colWidths=[3.4*cm, col, col, col, col])
+    t.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), TBL_HEADER),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.75, MID_BLUE),
+        ("LINEBELOW",     (0, 1), (-1, -1), 0.25, RULE_COLOR),
+        ("TOPPADDING",    (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+    ]))
+    return t
+
+
+def _multicase_table(delta_rows):
+    """The full P&L: base plus the three cases, levels."""
+    hdr = [Paragraph("<b>Line</b>", S_TBL_HDR),
+           Paragraph("<b>Base</b>", S_TBL_HDR)]
+    for name in CASE_NAMES:
+        hdr.append(Paragraph("<b>{}</b>".format(name), S_TBL_HDR))
+    rows = [hdr]
+
+    for r in delta_rows:
+        name = "<b>{}</b>".format(_esc(r["line"])) if r["line"] in SUBTOTAL_LINES \
+               else _esc(r["line"])
+        cells = [Paragraph(name, S_TBL),
+                 Paragraph("{:,.0f}".format(r["base"]), S_TBL_NUM)]
+        for case in CASE_NAMES:
+            cells.append(Paragraph("{:,.0f}".format(r[case]), S_TBL_NUM))
+        rows.append(cells)
+
+    label_w = 5.0 * cm
+    num_w   = (PAGE_W - label_w) / 4
+    t = Table(rows, colWidths=[label_w, num_w, num_w, num_w, num_w])
+    style = [
+        ("BACKGROUND",    (0, 0), (-1, 0), TBL_HEADER),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.75, MID_BLUE),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+    ]
+    for i, r in enumerate(delta_rows, start=1):
+        if r["line"] in SUBTOTAL_LINES:
+            style.append(("LINEABOVE", (0, i), (-1, i), 0.5, RULE_COLOR))
+        if r["line"] == EBIT_LABEL:
+            style.append(("BACKGROUND", (0, i), (-1, i), LIGHT_BLUE))
+    t.setStyle(TableStyle(style))
+    return t
+
+
+def _ebit_strip(ebit_row):
+    """A highlighted strip showing EBIT against the base for each case."""
+    if not ebit_row:
+        return None
+    label_w = 5.0 * cm
+    num_w   = (PAGE_W - label_w) / 4
+    cells = [Paragraph("<b>EBIT versus base</b>", S_TBL_HDR),
+             Paragraph("", S_TBL_NUM)]
+    for case in CASE_NAMES:
+        d = ebit_row[case + "_delta"]
+        c = "#A32D2D" if d < 0 else ("#1D6B0F" if d > 0 else "#898781")
+        cells.append(Paragraph(
+            '<font color="{}"><b>{:+,.0f}</b></font>'.format(c, d), S_TBL_NUM))
+    t = Table([cells], colWidths=[label_w, num_w, num_w, num_w, num_w])
+    t.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), AMBER_BG),
+        ("TOPPADDING",    (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+        ("LINEABOVE",     (0, 0), (-1, -1), 1.5, AMBER),
+        ("LINEBELOW",     (0, 0), (-1, -1), 1.5, AMBER),
+    ]))
+    return t
+
+
+def build_three_case_takeaways(delta_rows, driver_names):
+    """Derive the key takeaways for a three-case run. Pure Python."""
+    by = {r["line"]: r for r in delta_rows}
+    e  = by.get(EBIT_LABEL)
+    if not e:
+        return []
+    b, p, o = e["base"], e["Pessimistic"], e["Optimistic"]
+    down, up = p - b, o - b
+    t = [
+        "EBIT ranges from {:,.0f} in the pessimistic case to {:,.0f} in the "
+        "optimistic case, against a base of {:,.0f}.".format(p, o, b),
+        "Downside {:+,.0f}, upside {:+,.0f}, a total spread of {:,.0f}.".format(
+            down, up, o - p),
+    ]
+    if down != 0 and up != 0:
+        skew = abs(down) / abs(up)
+        if skew > 1.15:
+            t.append("The downside is about {:.0%} of the upside in size, so the "
+                     "risk outweighs the reward here.".format(skew))
+        elif skew < 0.87:
+            t.append("The upside exceeds the downside by roughly {:.0%}.".format(1 / skew))
+        else:
+            t.append("The downside and upside are broadly symmetric.")
+    t.append("Drivers flexed together: {}.".format(", ".join(driver_names)))
+    return t
+
+
+def call_claude_explain_three_case(delta_rows, spreads, basis_text):
+    """Claude narrates across the three cases. Numbers already computed."""
+    by = {r["line"]: r for r in delta_rows}
+    e  = by.get(EBIT_LABEL)
+    driver_lines = []
+    for line_item, sp in spreads.items():
+        driver_lines.append("  {}: pessimistic {}, realistic {}, optimistic {}".format(
+            line_item,
+            format_case_value(line_item, sp["pessimistic"]),
+            format_case_value(line_item, sp["realistic"]),
+            format_case_value(line_item, sp["optimistic"])))
+
+    system_prompt = (
+        "You are an FP&A analyst explaining a three case scenario analysis to a "
+        "finance team. The numbers are already computed. You explain them and "
+        "you never invent or recompute a figure.\n\n"
+        "<rules>\n"
+        "- Lead with the EBIT range across the three cases and what it means "
+        "for planning.\n"
+        "- Note whether the downside or the upside is larger, and say what that "
+        "implies.\n"
+        "- Name the drivers that were flexed and how they move together.\n"
+        "- State clearly that the realistic case is the base plan, so its "
+        "figures match the base.\n"
+        "- State what the model holds constant: drivers not selected do not "
+        "move, and this model does not link marketing or customers to revenue.\n"
+        "- Two short paragraphs. Standard ASCII only, no arrows or dashes.\n"
+        "</rules>"
+    )
+    user_prompt = (
+        "Drivers flexed:\n{drivers}\n\n"
+        "How the cases were set: {basis}\n\n"
+        "EBIT: base {b:,.0f}, pessimistic {p:,.0f}, realistic {r:,.0f}, "
+        "optimistic {o:,.0f}\n\n"
+        "Explain the analysis."
+    ).format(
+        drivers="\n".join(driver_lines), basis=basis_text,
+        b=e["base"], p=e["Pessimistic"], r=e["Realistic"], o=e["Optimistic"],
+    )
+
+    print("\n[..] Explaining the three cases with Claude...")
+    response = client.messages.create(
+        model=MODEL, max_tokens=MAX_TOKENS,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_prompt}],
+    )
+    return response.content[0].text, response.usage.input_tokens, response.usage.output_tokens
+
+
+def write_three_case_pdf(spreads, delta_rows, explanation, takeaways, basis_text):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    now      = datetime.now(timezone.utc)
+    ts_file  = now.strftime("%Y-%m-%d_%H-%M-%S")
+    ts_log   = now.isoformat()
+    pdf_path = OUTPUT_DIR / "three_case_{}.pdf".format(ts_file)
+
+    ebit_row = next((r for r in delta_rows if r["line"] == EBIT_LABEL), None)
+
+    story = []
+    story.append(_cover_block(DEFAULT_ENTITY, "three case analysis", "three-case", ts_log))
+    story.append(Spacer(1, 0.4 * cm))
+
+    story.append(_section_header("CASES"))
+    story.append(Spacer(1, 0.2 * cm))
+    story.append(_assumptions_table_multi(spreads))
+    story.append(Spacer(1, 0.15 * cm))
+    story.append(Paragraph(
+        '<font color="#898781">How the cases were set: {}. The realistic case '
+        'is the base plan.</font>'.format(_esc(basis_text)), S_CARD))
+    story.append(Spacer(1, 0.35 * cm))
+
+    story.append(_section_header("PROFIT AND LOSS ACROSS CASES"))
+    story.append(Spacer(1, 0.2 * cm))
+    story.append(_multicase_table(delta_rows))
+    strip = _ebit_strip(ebit_row)
+    if strip is not None:
+        story.append(Spacer(1, 0.2 * cm))
+        story.append(strip)
+    story.append(Spacer(1, 0.4 * cm))
+
+    story.append(_section_header("ANALYSIS"))
+    story.append(Spacer(1, 0.25 * cm))
+    tk = _takeaways_box(takeaways)
+    if tk is not None:
+        story.append(Paragraph("<b>Key takeaways</b>", S_BODY))
+        story.append(Spacer(1, 0.15 * cm))
+        story.append(tk)
+        story.append(Spacer(1, 0.45 * cm))
+    for i, para in enumerate(re.split(r'\n\s*\n', clean_markdown(explanation))):
+        para = " ".join(para.split())
+        if para:
+            story.append(Paragraph(para, S_BODY_JUST))
+            story.append(Spacer(1, 0.22 * cm))
+
+    story.append(HRFlowable(width="100%", thickness=0.5, color=RULE_COLOR))
+    story.append(Spacer(1, 0.15 * cm))
+    story.append(Paragraph(
+        "NL Scenario Modelling Copilot  ·  {}  ·  {}  ·  Cases are set "
+        "deterministically and computed by the model; the commentary explains "
+        "them. Figures are illustrative.".format(MODEL, ts_log[:10]), S_META))
+
+    doc = SimpleDocTemplate(
+        str(pdf_path), pagesize=A4,
+        rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm,
+        title="Three Case Scenario Analysis", author="NL Scenario Modelling Copilot")
+    doc.build(story)
+    _update_audit_field("pdf_file", str(pdf_path))
+    print("[OK] PDF written")
+    print("     PDF:  {}".format(pdf_path.name))
+    return pdf_path
+
+
+def export_three_case_csv(delta_rows):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    ts_file  = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+    csv_path = OUTPUT_DIR / "three_case_{}.csv".format(ts_file)
+    rows = []
+    for r in delta_rows:
+        row = {"line": r["line"], "base": round(r["base"], 2)}
+        for case in CASE_NAMES:
+            row[case.lower()]                = round(r[case], 2)
+            row[case.lower() + "_delta"]     = round(r[case + "_delta"], 2)
+        rows.append(row)
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+    _update_audit_field("csv_file", str(csv_path))
+    print("[OK] CSV exported")
+    print("     CSV:  {}".format(csv_path.name))
+    return csv_path
+
+
+def write_three_case_audit(spreads, delta_rows, basis_text):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(timezone.utc)
+
+    def file_hash(path):
+        with open(path, "rb") as fh:
+            return "sha256:" + hashlib.sha256(fh.read()).hexdigest()
+
+    ebit = next((r for r in delta_rows if r["line"] == EBIT_LABEL), None)
+    audit = {
+        "run_id":        now.isoformat(),
+        "project":       "nl-scenario-copilot",
+        "entity":        DEFAULT_ENTITY,
+        "analysis_type": "three-case",
+        "drivers_flexed": list(spreads.keys()),
+        "cases": {li: {k: sp[k] for k in ("pessimistic", "realistic", "optimistic")}
+                  for li, sp in spreads.items()},
+        "basis":         basis_text,
+        "ebit_base":         ebit["base"] if ebit else None,
+        "ebit_pessimistic":  ebit["Pessimistic"] if ebit else None,
+        "ebit_realistic":    ebit["Realistic"] if ebit else None,
+        "ebit_optimistic":   ebit["Optimistic"] if ebit else None,
+        "pdf_file":      None,
+        "csv_file":      None,
+        "input_hashes": {
+            "actuals":     file_hash(ACTUALS_FILE),
+            "drivers":     file_hash(DRIVERS_FILE),
+            "operational": file_hash(OPERATIONAL_FILE),
+            "headcount":   file_hash(HEADCOUNT_FILE),
+            "customer":    file_hash(CUSTOMER_FILE),
+        },
+        "human_reviewed": False,
+    }
+    with open(AUDIT_LOG, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(audit) + "\n")
+    print("\n[OK] Audit record written")
+    return audit

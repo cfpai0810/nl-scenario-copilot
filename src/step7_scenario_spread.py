@@ -100,3 +100,40 @@ def manual_spread(pessimistic, realistic, optimistic):
         "narrow":      False,
         "basis":       "values entered manually",
     }
+
+
+def _series_for(line_item, actuals_df):
+    """The monthly actual series for one line item, oldest first."""
+    rows = actuals_df[actuals_df["line_item"] == line_item].sort_values("period")
+    return rows["actual"].tolist()
+
+
+def history_rates_for(line_item, driver_type, actuals_df):
+    """Extract the historical rate series a spread is derived from. The right
+    rate depends on the driver type:
+      seasonal_yoy  year-on-year growth rates
+      growth_pct    month-on-month growth rates
+      margin_pct    the cost margin as a share of revenue, month by month
+    Returns a list of rates, or an empty list if the driver has no usable
+    history."""
+    if driver_type == "seasonal_yoy":
+        return yoy_growth_rates(actuals_df, line_item)
+
+    if driver_type == "growth_pct":
+        series = _series_for(line_item, actuals_df)
+        rates = []
+        for i in range(1, len(series)):
+            if series[i - 1] != 0:
+                rates.append((series[i] - series[i - 1]) / series[i - 1])
+        return rates
+
+    if driver_type == "margin_pct":
+        cost = _series_for(line_item, actuals_df)
+        rev  = _series_for("Revenue", actuals_df)
+        rates = []
+        for c, r in zip(cost, rev):
+            if r != 0:
+                rates.append(c / r)
+        return rates
+
+    return []
