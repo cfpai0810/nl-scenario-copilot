@@ -3,25 +3,26 @@
 Build target for the next session. Path 2 of the copilot (single what-if is Path 1, already done).
 
 ## Decision tree
-pick driver (Revenue / COGS / R&D / IT / Personnel / Marketing)
+pick drivers — multi-select, up to three (Revenue / COGS / R&D / IT / Personnel / Marketing)
 |
 +-- Auto-populate  ("calculate the cases for me")
-|     +-- derivable driver (Revenue/COGS/R&D)? -> data-derived spread
-|     |     +-- if narrow: offer to widen to a standard band (+/-3pp or +/-5pp)
-|     +-- fixed/schedule driver (IT/Personnel/Marketing)? -> standard band (+/-3 or +/-5)
+|     +-- each driver: derivable? -> data-derived spread; else -> moderate preset band
+|     +-- show ALL drivers' cases at once in a single table
+|     +-- one decision: accept [y], widen to a standard band [w], or back [b]
+|     |     +-- if any driver is narrow: note shown, widen offered (moderate or wide)
 |
 +-- Manual  ("I'll provide the numbers")
-+-- Enter each value  (pessimistic / realistic / optimistic)
-+-- Enter a range     (base +/- a band I choose)
++-- Enter each value per driver  (pessimistic / realistic / optimistic)
++-- Enter a band per driver      (base +/- a band I choose)
 |
-confirm (echo-back the three cases) -> run base + 3 cases -> multi-column report
+confirm (echo-back all drivers' cases) -> run base + 3 cases -> multi-column report
 
 ## Design principles
 1. Progressive disclosure: top menu has 3 items (single / three-case / quit). Complexity revealed one step at a time.
-2. First question is the clean binary: auto-populate vs manual.
+2. Multi-select drivers first (up to three), then one method choice: auto-populate vs manual.
 3. "Range vs each value" lives INSIDE manual, not as a peer of auto.
-4. Auto-populate hides its own complexity (derived vs band); only asks a follow-up if the derived spread is narrow.
-5. Context-aware: derivable drivers can derive; fixed ones go straight to a band.
+4. Auto-populate derives each driver independently, then shows all cases in one table with a single accept-or-widen decision.
+5. Context-aware: derivable drivers can derive; fixed/schedule ones fall back to a preset band automatically.
 6. Every path ends at the same echo-back + confirm. One checkpoint.
 7. Always a [back]. Same "run another" exit after every run.
 
@@ -33,12 +34,14 @@ confirm (echo-back the three cases) -> run base + 3 cases -> multi-column report
 - Derivable types: seasonal_yoy, margin_pct, growth_pct. IT (fixed), Personnel/Marketing (schedule) are band/manual only.
 - Real data note: revenue YoY std dev is ~0.15%, so derived spread flags NARROW on the real actuals.
 
-## Build order for next session
-1. Menu state machine in main.py (small functions returning choice or 'back'; ask/confirm injected).
-2. run_three_case pipeline (three engine runs on deep copies, multi-column deltas). Logic already sandbox-proven.
-3. Multi-column PDF (assumptions + delta table: base + 3 cases; AI explains across cases).
+## Build status — COMPLETE
+All three steps built and validated:
+1. Menu state machine in main.py — multi-select drivers, auto/manual paths, ask/confirm injected.
+2. Multi-driver run_three_case pipeline — cases dict keyed by {line_item: value}, deep copies, base never mutated.
+3. Multi-column PDF — cases table, full P&L across four columns, amber EBIT strip, Python takeaways, Claude analysis.
 
-## Validated so far
-- Spread calculator works against real actuals (narrow correctly flagged).
-- Three-scenario run validated end to end in sandbox: derive -> 3 cases -> run each -> multi-col deltas -> ordering (pess<base<opt) -> realistic delta = 0 -> base never mutated.
-- Multi-column assumptions table design confirmed (extends the single-scenario table by adding columns).
+## Validated
+- Spread calculator works against real actuals (narrow correctly flagged on Revenue at ~0.15%).
+- Multi-driver run validated: realistic column matches base exactly on every line (delta = 0).
+- Two-driver run (Revenue + COGS) produces correct compounding: asymmetric EBIT swing from COGS being a % of changing Revenue.
+- PDF, CSV, and audit trail all written correctly.
