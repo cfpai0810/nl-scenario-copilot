@@ -78,13 +78,15 @@ def run_scenario(request, base, ask=input, confirm=input):
     print("=" * 64)
 
     # STEP 1: parse
-    scenario, ptok_in, ptok_out = call_claude_parse(request)
+    scenario, ptok_in, ptok_out = call_claude_parse(
+        request, base["forecast_periods"])
     if scenario is None or not scenario.get("changes"):
         print("[STOP] Nothing to run. Could not parse a valid scenario.")
         return None
 
     # STEP 2: validate each change, classify the request
-    results = [validate_change(c) for c in scenario["changes"]]
+    results = [validate_change(c, forecast_periods=base["forecast_periods"])
+               for c in scenario["changes"]]
     classification = classify_request(results)
     print("\n[OK] Validation: {}".format(classification))
     for (status, reason, _), change in zip(results, scenario["changes"]):
@@ -128,9 +130,9 @@ def run_scenario(request, base, ask=input, confirm=input):
         return None
 
     # STEP 3: apply to copies, run base + scenario, full-P&L deltas
-    scenario_model, held_constant, base_context = apply_changes(base, normalised)
+    scenario_model, held_constant, base_context, po, vo = apply_changes(base, normalised)
     base_pnl     = run_forecast(base)
-    scenario_pnl = run_forecast(scenario_model)
+    scenario_pnl = run_forecast(scenario_model, po, vo)
     deltas        = compute_deltas(base_pnl, scenario_pnl)
     analysis_type = classify_analysis(normalised)
     headline      = headline_deltas(deltas)

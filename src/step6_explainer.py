@@ -91,6 +91,13 @@ def describe_base_change(ctx):
             return "The base assumes {:.0%} monthly growth for {}; this scenario sets it to {:.0%}.".format(bv, tgt, nv)
         if dt == "fixed":
             return "The base assumes EUR {:,.0f} for {}; this scenario sets it to EUR {:,.0f}.".format(bv, tgt, nv)
+    if op == "shift_driver":
+        if dt == "fixed":
+            direction = "adds" if (nv - bv) > 0 else "subtracts"
+            return "The base assumes EUR {:,.0f} for {}; this scenario {} EUR {:,.0f}, bringing it to EUR {:,.0f}.".format(bv, tgt, direction, abs(nv - bv), nv)
+        pp = abs(nv - bv) * 100
+        direction = "adds" if (nv - bv) > 0 else "subtracts"
+        return "The base assumes {:.1%} for {}; this scenario {} {:.1f} percentage points, bringing it to {:.1%}.".format(bv, tgt, direction, pp, nv)
     if op == "scale_driver":
         pct = (nv - 1) * 100
         direction = "increases" if pct > 0 else "reduces"
@@ -180,7 +187,110 @@ def build_takeaways(deltas, analysis_type):
     return takeaways
 
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+def build_monthly_rows(base_pnl, scenario_pnl, forecast_periods):
+    """Return a compact per-month structure for the monthly breakdown.
+
+    Shape:
+      {"periods": ["2026-07", ...],
+       "lines": [{"line": "Revenue",
+                  "scenario": {p: value, ...},
+                  "base":     {p: value, ...},
+                  "delta":    {p: scenario - base, ...}}, ...]}
+    """
+    def _row(df, line):
+        m = df[df["line"] == line]
+        return m.iloc[0] if len(m) else None
+
+    lines_out = []
+    for line in base_pnl["line"]:
+        b = _row(base_pnl, line)
+        s = _row(scenario_pnl, line)
+        base_by = {}
+        scen_by = {}
+        delta_by = {}
+        for p in forecast_periods:
+            bv = float(b[p]) if b is not None and p in b else 0.0
+            sv = float(s[p]) if s is not None and p in s else bv
+            base_by[p] = bv
+            scen_by[p] = sv
+            delta_by[p] = sv - bv
+        lines_out.append({"line": line, "scenario": scen_by,
+                          "base": base_by, "delta": delta_by})
+    return {"periods": list(forecast_periods), "lines": lines_out}
+
+
+def build_quarterly_rows(actuals_pnl, base_pnl, scenario_pnl,
+                         actual_periods, forecast_periods, fy_label="FY 2026"):
+    """Build the quarterly + FY structure for the full-year view.
+
+    Returns {columns: [{key, kind}, ...], lines: [{line, scenario, base, delta}]}
+    """
+    def _quarter(ym):
+        m = int(ym.split("-")[1])
+        y = ym.split("-")[0]
+        return "Q{} {}".format((m - 1) // 3 + 1, y)
+
+    def _row(df, line):
+        m = df[df["line"] == line]
+        return m.iloc[0] if len(m) else None
+
+    actual_set = set(actual_periods)
+    forecast_set = set(forecast_periods)
+    all_periods = sorted(set(actual_periods) | set(forecast_periods))
+
+    quarter_order = []
+    quarter_periods = {}
+    for p in all_periods:
+        q = _quarter(p)
+        if q not in quarter_periods:
+            quarter_periods[q] = []
+            quarter_order.append(q)
+        quarter_periods[q].append(p)
+
+    columns = []
+    for q in quarter_order:
+        plist = quarter_periods[q]
+        if all(p in actual_set for p in plist):
+            columns.append({"key": q, "kind": "actual"})
+        else:
+            columns.append({"key": q, "kind": "forecast"})
+    columns.append({"key": fy_label, "kind": "fy"})
+
+    lines_out = []
+    for line in base_pnl["line"]:
+        ab = _row(actuals_pnl, line)
+        bb = _row(base_pnl, line)
+        sb = _row(scenario_pnl, line)
+        scen_by = {}
+        base_by = {}
+        delta_by = {}
+        for col in columns:
+            if col["kind"] == "fy":
+                continue
+            q = col["key"]
+            plist = quarter_periods[q]
+            if col["kind"] == "actual":
+                val = sum(float(ab[p]) for p in plist) if ab is not None else 0.0
+                scen_by[q] = val
+                base_by[q] = val
+                delta_by[q] = 0.0
+            else:
+                bv = sum(float(bb[p]) for p in plist) if bb is not None else 0.0
+                sv = sum(float(sb[p]) for p in plist) if sb is not None else 0.0
+                base_by[q] = bv
+                scen_by[q] = sv
+                delta_by[q] = sv - bv
+        fy_base = sum(base_by.values())
+        fy_scen = sum(scen_by.values())
+        base_by[fy_label] = fy_base
+        scen_by[fy_label] = fy_scen
+        delta_by[fy_label] = fy_scen - fy_base
+        lines_out.append({"line": line, "scenario": scen_by,
+                          "base": base_by, "delta": delta_by})
+    return {"columns": columns, "lines": lines_out}
+
+
+client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 
 def build_explain_prompt(request, echo, headline, analysis_type, held_constant, base_context_text):
@@ -231,8 +341,12 @@ def build_explain_prompt(request, echo, headline, analysis_type, held_constant, 
     return system_prompt, user_prompt
 
 
-def call_claude_explain(request, echo, headline, analysis_type, held_constant, base_context_text):
+def call_claude_explain(request, echo, headline, analysis_type,
+                        held_constant, base_context_text, client=None):
     """Call Claude to explain the result. Returns (text, tok_in, tok_out)."""
+    client = client or globals().get("client")
+    if client is None:
+        raise RuntimeError("No Anthropic client available.")
     system_prompt, user_prompt = build_explain_prompt(
         request, echo, headline, analysis_type, held_constant, base_context_text)
     print("\n[..] Explaining result with Claude...")
@@ -377,6 +491,84 @@ def _delta_table(deltas):
     return t
 
 
+def _quarterly_table(quarterly):
+    """Render the quarterly/FY scenario table for the PDF. Actual quarters
+    are labelled with (A), forecast with (F), FY is the total."""
+    cols = quarterly["columns"]
+    hdr = [Paragraph("<b>Line</b>", S_TBL_HDR)]
+    for c in cols:
+        suffix = {"actual": " (A)", "forecast": " (F)", "fy": ""}[c["kind"]]
+        hdr.append(Paragraph("<b>{}{}</b>".format(c["key"], suffix), S_TBL_HDR))
+    rows = [hdr]
+    for ln in quarterly["lines"]:
+        name = "<b>{}</b>".format(_esc(ln["line"])) \
+               if ln["line"] in SUBTOTAL_LINES else _esc(ln["line"])
+        cells = [Paragraph(name, S_TBL)]
+        for c in cols:
+            v = ln["scenario"][c["key"]]
+            cells.append(Paragraph("{:,.0f}".format(v), S_TBL_NUM))
+        rows.append(cells)
+    label_w = 3.6 * cm
+    num_w = (PAGE_W - label_w) / len(cols)
+    t = Table(rows, colWidths=[label_w] + [num_w] * len(cols))
+    style = [
+        ("BACKGROUND",    (0, 0), (-1, 0), TBL_HEADER),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.75, MID_BLUE),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+    ]
+    for i, ln in enumerate(quarterly["lines"], start=1):
+        if ln["line"] in SUBTOTAL_LINES:
+            style.append(("LINEABOVE", (0, i), (-1, i), 0.5, RULE_COLOR))
+        if ln["line"] == EBIT_LABEL:
+            style.append(("BACKGROUND", (0, i), (-1, i), LIGHT_BLUE))
+    t.setStyle(TableStyle(style))
+    return t
+
+
+def _monthly_table(monthly, which):
+    """Render one monthly table (which = 'scenario' | 'base' | 'delta').
+    Rows = P&L lines, columns = months."""
+    periods = monthly["periods"]
+    hdr = [Paragraph("<b>Line</b>", S_TBL_HDR)]
+    for p in periods:
+        hdr.append(Paragraph("<b>{}</b>".format(p), S_TBL_HDR))
+    rows = [hdr]
+    for ln in monthly["lines"]:
+        name = "<b>{}</b>".format(_esc(ln["line"])) \
+               if ln["line"] in SUBTOTAL_LINES else _esc(ln["line"])
+        cells = [Paragraph(name, S_TBL)]
+        for p in periods:
+            v = ln[which][p]
+            if which == "delta":
+                c = "#A32D2D" if v < 0 else ("#1D6B0F" if v > 0 else "#898781")
+                cells.append(Paragraph(
+                    '<font color="{}">{:+,.0f}</font>'.format(c, v), S_TBL_NUM))
+            else:
+                cells.append(Paragraph("{:,.0f}".format(v), S_TBL_NUM))
+        rows.append(cells)
+    label_w = 3.6 * cm
+    num_w = (PAGE_W - label_w) / len(periods)
+    t = Table(rows, colWidths=[label_w] + [num_w] * len(periods))
+    style = [
+        ("BACKGROUND",    (0, 0), (-1, 0), TBL_HEADER),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.75, MID_BLUE),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+    ]
+    for i, ln in enumerate(monthly["lines"], start=1):
+        if ln["line"] in SUBTOTAL_LINES:
+            style.append(("LINEABOVE", (0, i), (-1, i), 0.5, RULE_COLOR))
+        if ln["line"] == EBIT_LABEL:
+            style.append(("BACKGROUND", (0, i), (-1, i), LIGHT_BLUE))
+    t.setStyle(TableStyle(style))
+    return t
+
+
 def _held_constant_box(held_constant):
     if held_constant:
         txt = " ".join(held_constant)
@@ -494,6 +686,18 @@ def write_pdf(request, echo, deltas, analysis_type, held_constant, explanation, 
     story.append(Paragraph('<b>Asked:</b> "{}"'.format(clean_markdown(request)), S_BODY))
     story.append(Paragraph('<b>Parsed as:</b> {}'.format(clean_markdown(echo)), S_BODY))
     story.append(Spacer(1, 0.35 * cm))
+
+    ebit_d = next((d for d in deltas if d["line"] == EBIT_LABEL), None)
+    if ebit_d and ebit_d["delta"] != 0:
+        _pct = (" ({:+.1%})".format(ebit_d["pct"])
+                if ebit_d["pct"] is not None else "")
+        story.append(Paragraph(
+            '<b>EBIT moves {:+,.0f}{}, from {:,.0f} to {:,.0f} over the '
+            'forecast horizon.</b>'.format(
+                ebit_d["delta"], _pct,
+                ebit_d["base"], ebit_d["scenario"]),
+            S_BODY))
+        story.append(Spacer(1, 0.35 * cm))
 
     assumptions_tbl = _assumptions_table(assumption_rows)
     if assumptions_tbl is not None:
@@ -721,8 +925,11 @@ def build_three_case_takeaways(delta_rows, driver_names):
     return t
 
 
-def call_claude_explain_three_case(delta_rows, spreads, basis_text):
+def call_claude_explain_three_case(delta_rows, spreads, basis_text, client=None):
     """Claude narrates across the three cases. Numbers already computed."""
+    client = client or globals().get("client")
+    if client is None:
+        raise RuntimeError("No Anthropic client available.")
     by = {r["line"]: r for r in delta_rows}
     e  = by.get(EBIT_LABEL)
     driver_lines = []
@@ -770,13 +977,12 @@ def call_claude_explain_three_case(delta_rows, spreads, basis_text):
     return response.content[0].text, response.usage.input_tokens, response.usage.output_tokens
 
 
-def write_three_case_pdf(spreads, delta_rows, explanation, takeaways, basis_text):
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    now      = datetime.now(timezone.utc)
-    ts_file  = now.strftime("%Y-%m-%d_%H-%M-%S")
-    ts_log   = now.isoformat()
-    pdf_path = OUTPUT_DIR / "three_case_{}.pdf".format(ts_file)
-
+def _three_case_story(spreads, delta_rows, explanation, takeaways, basis_text):
+    """Build the reportlab story (list of flowables) for the three-case report.
+    Shared by write_three_case_pdf (CLI, writes to file) and
+    three_case_pdf_bytes (web, writes to BytesIO)."""
+    now = datetime.now(timezone.utc)
+    ts_log = now.isoformat()
     ebit_row = next((r for r in delta_rows if r["line"] == EBIT_LABEL), None)
 
     story = []
@@ -821,6 +1027,15 @@ def write_three_case_pdf(spreads, delta_rows, explanation, takeaways, basis_text
         "NL Scenario Modelling Copilot  ·  {}  ·  {}  ·  Cases are set "
         "deterministically and computed by the model; the commentary explains "
         "them. Figures are illustrative.".format(MODEL, ts_log[:10]), S_META))
+    return story
+
+
+def write_three_case_pdf(spreads, delta_rows, explanation, takeaways, basis_text):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    ts_file = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+    pdf_path = OUTPUT_DIR / "three_case_{}.pdf".format(ts_file)
+
+    story = _three_case_story(spreads, delta_rows, explanation, takeaways, basis_text)
 
     doc = SimpleDocTemplate(
         str(pdf_path), pagesize=A4,

@@ -214,7 +214,8 @@ def _forecast_cac_driven(customer_df, forecast_periods):
 
 def calculate_forecast(actuals_df, drivers_df, operational_df,
                        headcount_df, customer_df,
-                       last_actual, forecast_periods, seasonal_year):
+                       last_actual, forecast_periods, seasonal_year,
+                       period_overrides=None, value_overrides=None):
     """
     Calculate the full forecast by applying each line item's driver.
 
@@ -286,6 +287,13 @@ def calculate_forecast(actuals_df, drivers_df, operational_df,
             for period, val in mkt_fcst.items():
                 value_lookup[(period, li)] = val
 
+    # Phase 2: per-month value overrides replace the pre-calculated value
+    # for the specified periods (e.g. Revenue). Placed after all pre-calc
+    # blocks so COGS (margin_pct) automatically follows overridden Revenue.
+    if value_overrides:
+        for (li, period), v in value_overrides.items():
+            value_lookup[(period, li)] = v
+
     # ── Period-by-period for the remaining driver types ───────────────────────
     forecast_rows = []
     for period in forecast_periods:
@@ -300,6 +308,10 @@ def calculate_forecast(actuals_df, drivers_df, operational_df,
 
             dtype  = driver_lookup[line_item]["driver_type"]
             dvalue = driver_lookup[line_item]["driver_value"]
+
+            # Per-period override (Phase 1: margin_pct, growth_pct, fixed)
+            if period_overrides and (line_item, period) in period_overrides:
+                dvalue = period_overrides[(line_item, period)]
 
             # These were pre-calculated above — just read the stored value
             if dtype in ("seasonal_yoy", "headcount_driven", "cac_driven"):
@@ -386,7 +398,7 @@ def calculate_forecast(actuals_df, drivers_df, operational_df,
     return full_df, driver_detail, flags
 
 
-def build_pnl(full_df, forecast_periods):
+def build_pnl(full_df, forecast_periods, row_type="forecast"):
     """
     Roll the forecast up into a simplified P&L per forecast period.
 
@@ -399,14 +411,15 @@ def build_pnl(full_df, forecast_periods):
 
     Args:
         full_df:          DataFrame with actual + forecast rows
-        forecast_periods: list of forecast period strings
+        forecast_periods: list of period strings to include
+        row_type:         "forecast" (default) or "actual"
 
     Returns:
         pnl_df: DataFrame with one row per P&L line and one column per
-                forecast period, plus a total column. Rows: Revenue, COGS,
+                period, plus a total column. Rows: Revenue, COGS,
                 Gross Profit, each OpEx line, Total OpEx, EBIT.
     """
-    fc = full_df[full_df["type"] == "forecast"]
+    fc = full_df[full_df["type"] == row_type]
 
     def value_for(line_item, period):
         match = fc[(fc["line_item"] == line_item) & (fc["period"] == period)]

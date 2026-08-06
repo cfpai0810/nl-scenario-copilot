@@ -8,9 +8,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Optional at import time. The CLI validates it when building its client
+# (see src/step3 / the client seam); the web supplies a per-session key.
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-if not ANTHROPIC_API_KEY:
-    raise ValueError("ANTHROPIC_API_KEY not found. Check .env in project root.")
 
 MODEL      = "claude-sonnet-4-6"
 MAX_TOKENS = 2048
@@ -84,13 +84,28 @@ VALIDATION_RULES = {
     },
     "set_driver": {
         "legal":  {"seasonal_yoy", "margin_pct", "growth_pct", "fixed"},
-        "bounds": None, "value_type": "float",   # per-driver bounds below
+        "bounds": None, "value_type": "float",
         "desc":   "replace a driver value outright (0.08 = set to 8 percent)",
+    },
+    "shift_driver": {
+        "legal":  {"seasonal_yoy", "margin_pct", "growth_pct", "fixed"},
+        "bounds": None, "value_type": "float",
+        "desc":   "add or subtract a fixed amount (30000 adds EUR 30k to a fixed cost)",
     },
     "scale_schedule": {
         "legal":  {"headcount_driven", "cac_driven"},
         "bounds": (0.0, 3.0), "value_type": "float",
         "desc":   "scale the schedule quantity (hires or target customers)",
+    },
+    "set_schedule": {
+        "legal":  {"headcount_driven", "cac_driven"},
+        "bounds": None, "value_type": "float",
+        "desc":   "replace all schedule entries with a uniform value per period",
+    },
+    "add_schedule": {
+        "legal":  {"headcount_driven", "cac_driven"},
+        "bounds": None, "value_type": "float",
+        "desc":   "add a fixed quantity to each schedule period",
     },
     "shift_schedule": {
         "legal":  {"headcount_driven", "cac_driven"},
@@ -105,6 +120,26 @@ SET_BOUNDS = {
     "margin_pct":   (0.0, 1.0),    # a margin cannot exceed 100 percent
     "growth_pct":   (-1.0, 2.0),   # monthly growth fraction
     "fixed":        (0.0, 1e9),    # an absolute euro amount
+}
+
+# Per-driver bounds for shift_driver (an additive delta to the current value)
+SHIFT_BOUNDS = {
+    "seasonal_yoy": (-0.50, 0.50),
+    "margin_pct":   (-0.50, 0.50),
+    "growth_pct":   (-0.50, 0.50),
+    "fixed":        (-1_000_000, 1_000_000),
+}
+
+# Per-driver bounds for set_schedule (absolute replacement per period)
+SET_SCHEDULE_BOUNDS = {
+    "headcount_driven": (0, 100),
+    "cac_driven":       (0, 10_000),
+}
+
+# Per-driver bounds for add_schedule (additive delta per period)
+ADD_SCHEDULE_BOUNDS = {
+    "headcount_driven": (-50, 50),
+    "cac_driven":       (-5_000, 5_000),
 }
 
 # Verbs that imply direction, used to sanity-check the sign of extracted values

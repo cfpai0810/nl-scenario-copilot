@@ -1,10 +1,14 @@
 .env
+.env.*
+.streamlit/secrets.toml
 venv/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
 output/*.txt
 output/*.pdf
 output/*.csv
 output/audit_log.jsonl
-__pycache__/
-*.pyc
 cv_bullets.txt
 debrief_log.txt
