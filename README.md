@@ -5,6 +5,8 @@ defend. The request is parsed by AI into a structured change, validated
 deterministically in Python, run through a driver-based forecast, and
 explained with its assumptions stated.
 
+**Live demo:** [nl-scenario-copilot.streamlit.app](https://nl-scenario-copilot.streamlit.app)
+
 This project reuses the forecast engine from
 [driver-based-rolling-forecast](https://github.com/cfpai0810/driver-based-rolling-forecast)
 unchanged, and wraps a natural-language front end and back end around it.
