@@ -56,13 +56,14 @@ st.write(
 st.markdown("**Every run leaves a record.**")
 st.write(
     "Whether a request was run, refused, flagged as ambiguous, or cancelled, it "
-    "is written to an activity record, along with a fingerprint of the exact "
+    "is written to the audit record, along with a fingerprint of the exact "
     "input data used. The point is that a scenario is reproducible and "
     "reviewable after the fact, which is what a finance function needs before it "
     "will rely on any tool, assisted by AI or not.")
 
 st.info(
-    "In one line: the AI parses and narrates; Python calculates; you approve. "
+    "In one line: the model reads your request and writes the explanation; "
+    "Python calculates every figure; you approve the result. "
     "The intelligence is at the edges, and the numbers in the middle are "
     "deterministic and checkable.")
 

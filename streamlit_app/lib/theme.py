@@ -98,6 +98,43 @@ def inject_css():
         margin-top: 6px;
         font-family: {SANS};
       }}
+
+      /* Explanation cards (takeaways callout, analysis body, caution note) */
+      .sc-exp-kicker {{
+        font-size: 0.72rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: {MID_BLUE};
+        margin-bottom: 2px;
+      }}
+      .sc-exp-callout {{
+        background: {LIGHT_BLUE};
+        border-left: 4px solid {DARK_BLUE};
+        border-radius: 6px;
+        padding: 12px 15px;
+        margin-bottom: 4px;
+      }}
+      .sc-exp-callout ul {{
+        margin: 4px 0 0 0;
+        padding-left: 18px;
+      }}
+      .sc-exp-callout li {{
+        color: {BODY_DARK};
+        margin-bottom: 4px;
+        font-size: 0.92rem;
+        line-height: 1.5;
+      }}
+      .sc-exp-caution {{
+        background: {AMBER_BG};
+        color: {AMBER};
+        border: 1px solid #E8C88A;
+        border-radius: 6px;
+        padding: 8px 12px;
+        margin: 9px 0 0;
+        font-size: 0.85rem;
+        line-height: 1.45;
+      }}
     </style>
     """
 

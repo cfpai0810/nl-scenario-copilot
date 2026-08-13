@@ -17,7 +17,7 @@ load_dotenv()
 
 from config import (
     ACTUALS_FILE, DRIVERS_FILE, OPERATIONAL_FILE, HEADCOUNT_FILE, CUSTOMER_FILE,
-    LINE_ITEMS,
+    LINE_ITEMS, CURRENCY_CODE,
 )
 
 # The reused Project 2 engine and loaders, called UNCHANGED
@@ -212,7 +212,7 @@ def _fmt(line_item, value):
     if dtype in SCHEDULE_DRIVER_TYPES:
         return "{:.2f}x".format(value)
     if dtype == "fixed":
-        return "EUR {:,.0f}".format(value)
+        return "{} {:,.0f}".format(CURRENCY_CODE, value)
     return "{:.2%}".format(value)
 
 

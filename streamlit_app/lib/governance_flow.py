@@ -70,7 +70,7 @@ def governance_flow_svg():
      language, the model shows how it understood you and you confirm it, a
      deterministic engine computes every figure with the model absent from the
      numbers, the model writes up the figures it was given, and you review and
-     sign off. Every step is written to the activity record.">
+     sign off. Every step is written to the audit record.">
   <defs>
     <marker id="gv-arrow" viewBox="0 0 10 10" refX="8" refY="5"
             markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -90,7 +90,7 @@ def governance_flow_svg():
         stroke-width="1" stroke-dasharray="3 4"/>
   <text x="460" y="250" text-anchor="middle" font-family="'Inter', sans-serif"
         font-size="11" fill="{MUTED}">
-    Every step is written to the activity record, so any run can be
+    Every step is written to the audit record, so any run can be
     reconstructed afterwards.
   </text>
 

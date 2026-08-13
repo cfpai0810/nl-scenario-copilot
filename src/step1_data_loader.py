@@ -58,7 +58,7 @@ def load_actuals(filepath):
     for col in ["period", "line_item", "actual"]:
         if df[col].isna().any():
             raise ValueError(
-                "Null values found in column '{}' — "
+                "Null values found in column '{}' - "
                 "every row must have a value.".format(col)
             )
 

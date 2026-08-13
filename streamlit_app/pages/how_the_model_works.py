@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from streamlit_app.lib.theme import inject_css, DARK_BLUE, MUTED
+from config import CURRENCY_CODE
 
 st.markdown(inject_css(), unsafe_allow_html=True)
 
@@ -86,7 +87,7 @@ lines = [
     {
         "P&L line": "IT Infrastructure",
         "Driver": "Fixed cost per month",
-        "Units": "EUR per month",
+        "Units": "{} per month".format(CURRENCY_CODE),
         "What you can say": "\"Add 5000 per month to IT\", "
         "\"Cut IT infrastructure by 10 percent\"",
     },

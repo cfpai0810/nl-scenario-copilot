@@ -1,11 +1,11 @@
 # =============================================================================
-# lib/audit.py — per-session audit trail (foundation component)
+# lib/audit.py - per-session audit trail (foundation component)
 # =============================================================================
-# On the web the audit log is PER SESSION and resets — no server-side disk
+# On the web the audit log is PER SESSION and resets - no server-side disk
 # writes, no shared JSONL file that two users could corrupt (the CLI's
 # _update_audit_field rewrites a shared file, which is unsafe for multi-user).
 # This keeps the demo GDPR-clean and honest: it is labelled "this session's
-# activity". The PERSISTENT audit log remains a feature of the downloaded
+# audit". The PERSISTENT audit log remains a feature of the downloaded
 # local version.
 #
 # It reuses the SAME record shape the CLI's write_audit produces, so the
@@ -24,7 +24,8 @@ def _ensure_store():
 
 def record_run(raw_request, interpretation, status,
                revenue_delta=None, ebit_delta=None, held_constant=None,
-               analysis_type=None, extra=None):
+               analysis_type=None, extra=None,
+               tokens_in=None, tokens_out=None, cost_estimate=None):
     """Append one run to this session's audit trail. status is one of
     draft / approved / locked / refused / caution. Mirrors the CLI record
     shape, minus the file hashing and disk write."""
@@ -38,6 +39,9 @@ def record_run(raw_request, interpretation, status,
         "revenue_delta": revenue_delta,
         "ebit_delta":    ebit_delta,
         "held_constant": held_constant or [],
+        "tokens_in":     tokens_in,
+        "tokens_out":    tokens_out,
+        "cost_estimate": cost_estimate,
     }
     if extra:
         run.update(extra)

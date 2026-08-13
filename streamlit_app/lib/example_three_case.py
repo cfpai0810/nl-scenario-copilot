@@ -84,4 +84,22 @@ THREE_CASE_EXAMPLE = {
         "does not link marketing spend or customer volume to revenue, so those "
         "items have no effect on the scenario outcomes shown here."
     ),
+
+    # Per-month EBIT for the three-case fan chart. Values from the same live
+    # run as the totals above. Realistic equals the base by design.
+    "case_monthly": {
+        "periods": ["2026-07", "2026-08", "2026-09",
+                     "2026-10", "2026-11", "2026-12"],
+        "pessimistic": [51892.32, 18064.77, 72477.59,
+                        79820.13, 113982.64, 175799.60],
+        "realistic":   [56308.10, 22354.38, 77355.97,
+                        84950.84, 119533.91, 181687.31],
+        "optimistic":  [60733.23, 26653.08, 82244.68,
+                        90092.42, 125096.93, 187587.48],
+    },
+
+    # Real token counts captured from a live run of this example (explain
+    # call only; three-case does not parse from natural language).
+    "tokens_in": 327,
+    "tokens_out": 402,
 }

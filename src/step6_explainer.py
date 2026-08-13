@@ -31,6 +31,7 @@ from config import (
     ANTHROPIC_API_KEY, MODEL, MAX_TOKENS, OUTPUT_DIR, AUDIT_LOG, DEFAULT_ENTITY,
     ACTUALS_FILE, DRIVERS_FILE, OPERATIONAL_FILE, HEADCOUNT_FILE, CUSTOMER_FILE,
     EBIT_LABEL, LINE_ITEMS, SCHEDULE_DRIVER_TYPES,
+    CURRENCY_CODE, CURRENCY_SYMBOL,
 )
 
 # ── Page geometry and palette (same system as Projects 1 to 3) ────────────────
@@ -90,11 +91,11 @@ def describe_base_change(ctx):
         if dt == "growth_pct":
             return "The base assumes {:.0%} monthly growth for {}; this scenario sets it to {:.0%}.".format(bv, tgt, nv)
         if dt == "fixed":
-            return "The base assumes EUR {:,.0f} for {}; this scenario sets it to EUR {:,.0f}.".format(bv, tgt, nv)
+            return "The base assumes {} {:,.0f} for {}; this scenario sets it to {} {:,.0f}.".format(CURRENCY_CODE, bv, tgt, CURRENCY_CODE, nv)
     if op == "shift_driver":
         if dt == "fixed":
             direction = "adds" if (nv - bv) > 0 else "subtracts"
-            return "The base assumes EUR {:,.0f} for {}; this scenario {} EUR {:,.0f}, bringing it to EUR {:,.0f}.".format(bv, tgt, direction, abs(nv - bv), nv)
+            return "The base assumes {} {:,.0f} for {}; this scenario {} {} {:,.0f}, bringing it to {} {:,.0f}.".format(CURRENCY_CODE, bv, tgt, direction, CURRENCY_CODE, abs(nv - bv), CURRENCY_CODE, nv)
         pp = abs(nv - bv) * 100
         direction = "adds" if (nv - bv) > 0 else "subtracts"
         return "The base assumes {:.1%} for {}; this scenario {} {:.1f} percentage points, bringing it to {:.1%}.".format(bv, tgt, direction, pp, nv)
@@ -121,7 +122,7 @@ def describe_driver_value(driver_type, value):
     if driver_type == "growth_pct":
         return "{:.0%} MoM growth".format(value)
     if driver_type == "fixed":
-        return "EUR {:,.0f}".format(value)
+        return "{} {:,.0f}".format(CURRENCY_CODE, value)
     if driver_type == "headcount_driven":
         return "per hiring schedule"
     if driver_type == "cac_driven":
@@ -308,11 +309,12 @@ def build_explain_prompt(request, echo, headline, analysis_type, held_constant, 
     system_prompt = (
         "You are an FP&A analyst explaining a what-if result to a finance "
         "team. The numbers are already computed. You explain them clearly and "
-        "you never invent or recompute a figure.\n\n"
+        "you never invent or recompute a figure. All monetary figures are in "
+        "{ccy}.\n\n"
         "<rules>\n"
         "- Lead with the single most important result. State what changed and "
         "what happened to Revenue and EBIT over the forecast horizon, and name "
-        "the percentage magnitude in context, not just the euro figure.\n"
+        "the percentage magnitude in context, not just the {ccy} figure.\n"
         "- Say whether this was a sensitivity (one driver moved) or a scenario "
         "(several moved together).\n"
         "- If any assumption was held constant, state it clearly as a "
@@ -321,7 +323,7 @@ def build_explain_prompt(request, echo, headline, analysis_type, held_constant, 
         "- Keep it to a short, professional paragraph. Standard ASCII only, "
         "no arrows or dashes.\n"
         "</rules>"
-    )
+    ).format(ccy=CURRENCY_CODE)
 
     user_prompt = (
         "Original request: \"{request}\"\n"
@@ -692,10 +694,11 @@ def write_pdf(request, echo, deltas, analysis_type, held_constant, explanation, 
         _pct = (" ({:+.1%})".format(ebit_d["pct"])
                 if ebit_d["pct"] is not None else "")
         story.append(Paragraph(
-            '<b>EBIT moves {:+,.0f}{}, from {:,.0f} to {:,.0f} over the '
+            '<b>EBIT moves {sym}{:+,.0f}{}, from {sym}{:,.0f} to {sym}{:,.0f} over the '
             'forecast horizon.</b>'.format(
                 ebit_d["delta"], _pct,
-                ebit_d["base"], ebit_d["scenario"]),
+                ebit_d["base"], ebit_d["scenario"],
+                sym=CURRENCY_SYMBOL),
             S_BODY))
         story.append(Spacer(1, 0.35 * cm))
 
@@ -796,7 +799,7 @@ def format_case_value(line_item, value):
     if dtype in SCHEDULE_DRIVER_TYPES:
         return "{:.2f}x".format(value)
     if dtype == "fixed":
-        return "EUR {:,.0f}".format(value)
+        return "{} {:,.0f}".format(CURRENCY_CODE, value)
     return "{:.2%}".format(value)
 
 
@@ -943,7 +946,8 @@ def call_claude_explain_three_case(delta_rows, spreads, basis_text, client=None)
     system_prompt = (
         "You are an FP&A analyst explaining a three case scenario analysis to a "
         "finance team. The numbers are already computed. You explain them and "
-        "you never invent or recompute a figure.\n\n"
+        "you never invent or recompute a figure. All monetary figures are in "
+        "{ccy}.\n\n"
         "<rules>\n"
         "- Lead with the EBIT range across the three cases and what it means "
         "for planning.\n"
@@ -956,7 +960,7 @@ def call_claude_explain_three_case(delta_rows, spreads, basis_text, client=None)
         "move, and this model does not link marketing or customers to revenue.\n"
         "- Two short paragraphs. Standard ASCII only, no arrows or dashes.\n"
         "</rules>"
-    )
+    ).format(ccy=CURRENCY_CODE)
     user_prompt = (
         "Drivers flexed:\n{drivers}\n\n"
         "How the cases were set: {basis}\n\n"

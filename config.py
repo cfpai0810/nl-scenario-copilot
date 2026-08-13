@@ -15,6 +15,28 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 MODEL      = "claude-sonnet-4-6"
 MAX_TOKENS = 2048
 
+# Cost-estimate rates. These are an ESTIMATE input, not a bill; Anthropic's
+# metering is authoritative.
+#
+# Model: claude-sonnet-4-6
+# Rate:  $3.00 per million input tokens, $15.00 per million output tokens.
+# Verified: August 2026. Re-verify at https://www.anthropic.com/pricing
+# IMPORTANT: this rate is tied to the model above. If MODEL changes (for example
+# to a newer Sonnet), update these rates to match, or the estimate will be wrong.
+COST_INPUT_USD_PER_MTOK  = 3.00
+COST_OUTPUT_USD_PER_MTOK = 15.00
+
+# Assumed EUR/USD for display. The API bills in USD; this is a fixed assumption
+# for the euro figure, clearly labelled as such wherever shown. Re-verify or
+# adjust as needed; it is deliberately not fetched live.
+ASSUMED_USD_PER_EUR = 1.08
+
+# The currency the tool DISPLAYS data figures in. This is the user's data
+# currency, and is SEPARATE from the API-cost estimate in cost.py, which reports
+# the Anthropic bill in EUR and USD and must not use these values.
+CURRENCY_CODE = "EUR"
+CURRENCY_SYMBOL = "€"   # euro sign
+
 BASE_DIR   = Path(__file__).parent
 DATA_DIR   = BASE_DIR / "data"
 OUTPUT_DIR = BASE_DIR / "output"
@@ -90,7 +112,7 @@ VALIDATION_RULES = {
     "shift_driver": {
         "legal":  {"seasonal_yoy", "margin_pct", "growth_pct", "fixed"},
         "bounds": None, "value_type": "float",
-        "desc":   "add or subtract a fixed amount (30000 adds EUR 30k to a fixed cost)",
+        "desc":   "add or subtract a fixed amount (30000 adds 30k to a fixed cost)",
     },
     "scale_schedule": {
         "legal":  {"headcount_driven", "cac_driven"},

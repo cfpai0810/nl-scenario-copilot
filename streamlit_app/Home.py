@@ -113,6 +113,10 @@ def _home_page():
             "well under one US cent in practice. It is a small amount, but it "
             "is not zero, so it is worth setting a spending limit in the "
             "console if you plan to run many.")
+        st.write(
+            "For a complete guide to running the tool on your own figures, "
+            "including the data file layout and common pitfalls, see "
+            "Your own data in the sidebar.")
         st.caption(
             "Your key is used only for your session and is not stored by this "
             "site. On the web the data stays sample-only; to work on your own "
@@ -151,6 +155,8 @@ pg = st.navigation([
             title="Single what-if", icon=":material/tune:"),
     st.Page(str(PAGES_DIR / "three_case.py"),
             title="Three-case", icon=":material/analytics:"),
+    st.Page(str(PAGES_DIR / "your_own_data.py"),
+            title="Your own data", icon=":material/upload_file:"),
     st.Page(str(PAGES_DIR / "how_its_built.py"),
             title="How it's built", icon=":material/build:"),
 ])

@@ -5,7 +5,7 @@
 # testable without Streamlit.
 # =============================================================================
 
-from config import LINE_ITEMS, SCHEDULE_DRIVER_TYPES
+from config import LINE_ITEMS, SCHEDULE_DRIVER_TYPES, CURRENCY_CODE
 from src.step6_explainer import format_case_value
 
 
@@ -20,7 +20,7 @@ def parse_case_value(line_item, text):
         if dtype in SCHEDULE_DRIVER_TYPES:
             return float(t.replace("x", "")), None
         if dtype == "fixed":
-            return float(t.replace("EUR", "").replace(",", "").strip()), None
+            return float(t.replace(CURRENCY_CODE, "").replace(",", "").strip()), None
         return float(t.replace("%", "").strip()) / 100.0, None
     except ValueError:
         return None, "Could not read '{}' for {}.".format(text, line_item)

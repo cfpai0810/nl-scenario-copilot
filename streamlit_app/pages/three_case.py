@@ -1,8 +1,8 @@
 # =============================================================================
-# pages/three_case.py — pessimistic / realistic / optimistic analysis
+# pages/three_case.py - pessimistic / realistic / optimistic analysis
 # =============================================================================
 # Structured controls: pick drivers, derive a spread, optionally edit it,
-# confirm, and run. Reuses the tested step7/step8/step6 mechanics — the page
+# confirm, and run. Reuses the tested step7/step8/step6 mechanics - the page
 # only orchestrates and renders.
 #
 # Session-state keys are prefixed tc_ to avoid collision with the single
@@ -14,6 +14,7 @@ from pathlib import Path
 
 import streamlit as st
 import pandas as pd
+from matplotlib import pyplot as plt
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
@@ -25,16 +26,19 @@ from streamlit_app.lib.errors import friendly_message
 from streamlit_app.lib import audit
 from streamlit_app.lib.web_emit import three_case_pdf_bytes, three_case_csv_bytes
 from streamlit_app.lib.example_three_case import THREE_CASE_EXAMPLE
+from streamlit_app.lib.cost import estimate_cost, format_cost
+from streamlit_app.lib.charts import build_three_case_chart, chart_png_bytes
+from streamlit_app.lib.explanation_cards import render_explanation_cards
 
 from config import (
     LINE_ITEMS, DRIVER_DIRECTION, SCHEDULE_DRIVER_TYPES,
-    PRESET_BANDS, EBIT_LABEL,
+    PRESET_BANDS, EBIT_LABEL, CURRENCY_SYMBOL,
 )
 from src.step6_explainer import format_case_value
 from src.step7_scenario_spread import derive_spread, preset_spread, history_rates_for
 from src.step8_three_case import (
     run_three_case, multi_case_deltas, case_ebit_summary, spread_base_for,
-    CASE_ORDER,
+    build_case_monthly_ebit, CASE_ORDER,
 )
 
 st.markdown(inject_css(), unsafe_allow_html=True)
@@ -104,11 +108,16 @@ with tab_example:
 
     e = ex["ebit"]
     c1, c2, c3 = st.columns(3)
-    c1.metric("Pessimistic", "{:,.0f}".format(e["pessimistic"]["value"]),
-              delta="{:+,.0f}".format(e["pessimistic"]["delta"]))
-    c2.metric("Realistic (base)", "{:,.0f}".format(e["realistic"]["value"]))
-    c3.metric("Optimistic", "{:,.0f}".format(e["optimistic"]["value"]),
-              delta="{:+,.0f}".format(e["optimistic"]["delta"]))
+    c1.metric("Pessimistic", "{}{:,.0f}".format(CURRENCY_SYMBOL, e["pessimistic"]["value"]),
+              delta="{}{:+,.0f}".format(CURRENCY_SYMBOL, e["pessimistic"]["delta"]))
+    c2.metric("Realistic (base)", "{}{:,.0f}".format(CURRENCY_SYMBOL, e["realistic"]["value"]))
+    c3.metric("Optimistic", "{}{:,.0f}".format(CURRENCY_SYMBOL, e["optimistic"]["value"]),
+              delta="{}{:+,.0f}".format(CURRENCY_SYMBOL, e["optimistic"]["delta"]))
+
+    if ex.get("case_monthly"):
+        _fig = build_three_case_chart(ex["case_monthly"])
+        st.pyplot(_fig)
+        plt.close(_fig)
 
     st.divider()
 
@@ -123,21 +132,18 @@ with tab_example:
     ebit_row = ex["rows"][0]
     st.dataframe(pd.DataFrame([{
         "Line": ebit_row["line"],
-        "Base": "{:,.0f}".format(ebit_row["base"]),
-        "Pessimistic": "{:,.0f}".format(ebit_row["Pessimistic"]),
-        "Realistic": "{:,.0f}".format(ebit_row["Realistic"]),
-        "Optimistic": "{:,.0f}".format(ebit_row["Optimistic"]),
+        "Base": "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit_row["base"]),
+        "Pessimistic": "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit_row["Pessimistic"]),
+        "Realistic": "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit_row["Realistic"]),
+        "Optimistic": "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit_row["Optimistic"]),
     }]), use_container_width=True, hide_index=True)
 
     st.divider()
 
-    if ex.get("takeaways"):
-        st.markdown("**Key takeaways**")
-        for t in ex["takeaways"]:
-            st.write("- " + t)
+    render_explanation_cards(ex.get("takeaways"), ex["explanation"])
 
-    st.markdown("**Explanation**")
-    st.write(ex["explanation"])
+    if ex.get("tokens_in") is not None:
+        st.caption(format_cost(ex["tokens_in"], ex["tokens_out"]))
 
 # ── Live path ────────────────────────────────────────────────────────────────
 with tab_live:
@@ -296,15 +302,19 @@ with tab_live:
                             call_claude_explain_three_case,
                         )
                         results = run_three_case(base, cases)
+                        case_monthly = build_case_monthly_ebit(
+                            results, base["forecast_periods"])
                         delta_rows = multi_case_deltas(results)
                         ebit = case_ebit_summary(delta_rows)
                         takeaways = build_three_case_takeaways(
                             delta_rows, list(spreads.keys()))
                         basis_text = "; ".join(
                             sorted({sp["basis"] for sp in spreads.values()}))
-                        explanation, _, _ = call_claude_explain_three_case(
-                            delta_rows, spreads, basis_text, client=client)
+                        explanation, explain_in, explain_out = \
+                            call_claude_explain_three_case(
+                                delta_rows, spreads, basis_text, client=client)
 
+                        cost_est = estimate_cost(explain_in, explain_out)
                         audit.record_run(
                             "Three-case: " + ", ".join(line_items),
                             "Flexed {} across three cases".format(
@@ -312,16 +322,22 @@ with tab_live:
                             "approved",
                             ebit_delta=(ebit["Optimistic_delta"]
                                         if ebit else None),
-                            analysis_type="three-case")
+                            analysis_type="three-case",
+                            tokens_in=explain_in,
+                            tokens_out=explain_out,
+                            cost_estimate=cost_est)
 
                         st.session_state.tc_result = {
                             "spreads": spreads,
                             "delta_rows": delta_rows,
                             "ebit": ebit,
+                            "case_monthly": case_monthly,
                             "takeaways": takeaways,
                             "explanation": explanation,
                             "basis_text": basis_text,
                             "line_items": line_items,
+                            "tokens_in": explain_in,
+                            "tokens_out": explain_out,
                         }
                         st.session_state.tc_phase = "result"
                         st.rerun()
@@ -338,23 +354,28 @@ with tab_live:
         if ebit:
             c1, c2, c3 = st.columns(3)
             c1.metric("Pessimistic",
-                      "{:,.0f}".format(ebit["Pessimistic"]),
-                      delta="{:+,.0f}".format(ebit["Pessimistic_delta"]))
+                      "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit["Pessimistic"]),
+                      delta="{}{:+,.0f}".format(CURRENCY_SYMBOL, ebit["Pessimistic_delta"]))
             c2.metric("Realistic (base)",
-                      "{:,.0f}".format(ebit["Realistic"]))
+                      "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit["Realistic"]))
             c3.metric("Optimistic",
-                      "{:,.0f}".format(ebit["Optimistic"]),
-                      delta="{:+,.0f}".format(ebit["Optimistic_delta"]))
+                      "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit["Optimistic"]),
+                      delta="{}{:+,.0f}".format(CURRENCY_SYMBOL, ebit["Optimistic_delta"]))
+
+        if res.get("case_monthly"):
+            _fig = build_three_case_chart(res["case_monthly"])
+            st.pyplot(_fig)
+            plt.close(_fig)
 
         st.divider()
         st.markdown("#### Profit and loss across cases")
 
         df = pd.DataFrame([{
             "Line": r["line"],
-            "Base": "{:,.0f}".format(r["base"]),
-            "Pessimistic": "{:,.0f}".format(r["Pessimistic"]),
-            "Realistic": "{:,.0f}".format(r["Realistic"]),
-            "Optimistic": "{:,.0f}".format(r["Optimistic"]),
+            "Base": "{}{:,.0f}".format(CURRENCY_SYMBOL, r["base"]),
+            "Pessimistic": "{}{:,.0f}".format(CURRENCY_SYMBOL, r["Pessimistic"]),
+            "Realistic": "{}{:,.0f}".format(CURRENCY_SYMBOL, r["Realistic"]),
+            "Optimistic": "{}{:,.0f}".format(CURRENCY_SYMBOL, r["Optimistic"]),
         } for r in res["delta_rows"]])
         st.dataframe(df, use_container_width=True, hide_index=True)
 
@@ -363,19 +384,17 @@ with tab_live:
 
         st.divider()
 
-        if res["takeaways"]:
-            st.markdown("**Key takeaways**")
-            for t in res["takeaways"]:
-                st.write("- " + t)
+        render_explanation_cards(res["takeaways"], res["explanation"])
 
-        st.markdown("**Explanation**")
-        st.write(res["explanation"])
+        if res.get("tokens_in") is not None:
+            st.caption(format_cost(res["tokens_in"], res["tokens_out"]))
 
         col_pdf, col_csv = st.columns(2)
         try:
             pdf = three_case_pdf_bytes(
                 res["spreads"], res["delta_rows"], res["explanation"],
-                res["takeaways"], res["basis_text"])
+                res["takeaways"], res["basis_text"],
+                case_monthly=res.get("case_monthly"))
             col_pdf.download_button(
                 "Download report (PDF)", data=pdf,
                 file_name="three_case_analysis.pdf",
@@ -395,15 +414,17 @@ with tab_live:
         if st.button("Run another analysis"):
             _tc_reset(); st.rerun()
 
-# ── Session activity record ──────────────────────────────────────────────────
+# ── The session audit record ────────────────────────────────────────────────
 runs = audit.get_runs()
 if runs:
     st.markdown("---")
-    st.markdown("#### This session's activity")
+    st.markdown("#### This session's audit")
     st.caption("Every run you make is listed here for this session.")
     for r in runs:
         cols = st.columns([2, 5, 2])
         cols[0].markdown(badge_html(r["status"]), unsafe_allow_html=True)
         cols[1].write(r["raw_request"])
         if r.get("ebit_delta") is not None:
-            cols[2].write("EBIT {:+,.0f}".format(r["ebit_delta"]))
+            cols[2].write("EBIT {}{:+,.0f}".format(CURRENCY_SYMBOL, r["ebit_delta"]))
+        if r.get("tokens_in") is not None:
+            st.caption(format_cost(r["tokens_in"], r["tokens_out"]))

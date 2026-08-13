@@ -10,7 +10,7 @@ import re
 import json
 import anthropic
 
-from config import ANTHROPIC_API_KEY, MODEL, MAX_TOKENS, LINE_ITEMS
+from config import ANTHROPIC_API_KEY, MODEL, MAX_TOKENS, LINE_ITEMS, CURRENCY_CODE
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
@@ -71,14 +71,14 @@ def build_parse_prompt(request, forecast_periods):
         "of months. Match the sign to the verb.\n"
         "- 'Increase by 20 percent' is scale_driver (multiply by 1.20). "
         "'Increase by 3 percentage points' is shift_driver (add 0.03). "
-        "'Add 30000' on a fixed-EUR driver is shift_driver (value 30000). "
+        "'Add 30000' on a fixed-{ccy} driver is shift_driver (value 30000). "
         "Choose the operation that matches the user's intent.\n"
-        "- COGS, Revenue growth, and R&D growth are percentages, not euro "
-        "amounts. If the user gives a euro figure for one of these, still "
+        "- COGS, Revenue growth, and R&D growth are percentages, not {ccy} "
+        "amounts. If the user gives a {ccy} figure for one of these, still "
         "parse your best guess but set confidence to low and explain in the "
-        "ambiguity note that the driver is a percentage, not euros.\n"
-        "- IT Infrastructure is a per-period (monthly) euro cost. If the user "
-        "adds a euro amount without saying per month or per year, set "
+        "ambiguity note that the driver is a percentage, not {ccy}.\n"
+        "- IT Infrastructure is a per-period (monthly) {ccy} cost. If the user "
+        "adds a {ccy} amount without saying per month or per year, set "
         "confidence to low and note in the ambiguity note that the amount "
         "will apply per month unless they say otherwise.\n"
         "- If the request is vague or you are unsure, say so in "
@@ -136,7 +136,8 @@ def build_parse_prompt(request, forecast_periods):
         "}}\n"
         "```\n"
         "</output_format>"
-    ).format(line_items=line_item_list, forecast_periods=periods_line)
+    ).format(line_items=line_item_list, forecast_periods=periods_line,
+             ccy=CURRENCY_CODE)
 
     user_prompt = (
         "What-if request:\n\"{}\"\n\n"

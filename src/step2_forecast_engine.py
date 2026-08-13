@@ -28,6 +28,7 @@ from config import (
     REVENUE_ITEMS,
     COGS_ITEMS,
     OPEX_ITEMS,
+    CURRENCY_CODE,
 )
 
 
@@ -473,10 +474,10 @@ def build_pnl(full_df, forecast_periods, row_type="forecast"):
     ebit_margin= (total_ebit / total_rev) if total_rev else 0
 
     print("\n[OK] Simplified P&L built")
-    print("     H2 Revenue:      EUR {:>14,.0f}".format(total_rev))
-    print("     H2 Gross Profit: EUR {:>14,.0f}  ({:.1%})".format(
-        sum(gross.values()), gp_margin))
-    print("     H2 EBIT:         EUR {:>14,.0f}  ({:.1%})".format(
-        total_ebit, ebit_margin))
+    print("     H2 Revenue:      {} {:>14,.0f}".format(CURRENCY_CODE, total_rev))
+    print("     H2 Gross Profit: {} {:>14,.0f}  ({:.1%})".format(
+        CURRENCY_CODE, sum(gross.values()), gp_margin))
+    print("     H2 EBIT:         {} {:>14,.0f}  ({:.1%})".format(
+        CURRENCY_CODE, total_ebit, ebit_margin))
 
     return pnl_df

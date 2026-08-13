@@ -14,7 +14,10 @@ from datetime import datetime, timezone
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+from reportlab.lib.utils import ImageReader
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Image,
+)
 
 # Reuse the PURE builders from the existing explainer — no rebuild.
 from src.step6_explainer import (
@@ -24,14 +27,14 @@ from src.step6_explainer import (
     clean_markdown,
     S_BODY, S_BODY_JUST, S_META, RULE_COLOR,
 )
-from config import MODEL, DEFAULT_ENTITY, EBIT_LABEL
+from config import MODEL, DEFAULT_ENTITY, EBIT_LABEL, CURRENCY_SYMBOL
 
 import re
 
 
 def scenario_pdf_bytes(request, echo, deltas, analysis_type, held_constant,
                        explanation, assumption_rows, takeaways,
-                       monthly=None, quarterly=None):
+                       monthly=None, quarterly=None, quarterly_ebit=None):
     """Build the single-scenario report and return it as PDF bytes for a
     download button. Reuses the exact story-builders the CLI PDF uses; only
     the output target (a BytesIO buffer) and the skipped audit-file mutation
@@ -50,16 +53,42 @@ def scenario_pdf_bytes(request, echo, deltas, analysis_type, held_constant,
     story.append(Paragraph('<b>Parsed as:</b> {}'.format(clean_markdown(echo)), S_BODY))
     story.append(Spacer(1, 0.35 * cm))
 
+    PAGE_W = A4[0] - 4 * cm
+
     ebit_d = next((d for d in deltas if d["line"] == EBIT_LABEL), None)
     if ebit_d and ebit_d["delta"] != 0:
         _pct = (" ({:+.1%})".format(ebit_d["pct"])
                 if ebit_d["pct"] is not None else "")
         story.append(Paragraph(
-            '<b>EBIT moves {:+,.0f}{}, from {:,.0f} to {:,.0f} over the '
+            '<b>EBIT moves {sym}{:+,.0f}{}, from {sym}{:,.0f} to {sym}{:,.0f} over the '
             'forecast horizon.</b>'.format(
                 ebit_d["delta"], _pct,
-                ebit_d["base"], ebit_d["scenario"]),
+                ebit_d["base"], ebit_d["scenario"],
+                sym=CURRENCY_SYMBOL),
             S_BODY))
+        story.append(Spacer(1, 0.35 * cm))
+
+    if quarterly_ebit:
+        from streamlit_app.lib.charts import build_quarterly_chart, chart_png_bytes
+        _fig = build_quarterly_chart(quarterly_ebit)
+        _imgbuf = chart_png_bytes(_fig)
+        _iw, _ih = ImageReader(_imgbuf).getSize()
+        _imgbuf.seek(0)
+        story.append(Image(_imgbuf, width=PAGE_W,
+                           height=PAGE_W * _ih / _iw))
+        if quarterly:
+            _ebit_ln = next((l for l in quarterly["lines"]
+                             if l["line"] == EBIT_LABEL), None)
+            if _ebit_ln:
+                _fy = quarterly["columns"][-1]["key"]
+                story.append(Paragraph(
+                    '<font color="#898781">Full-year EBIT moves from '
+                    '{sym}{:,.0f} to {sym}{:,.0f} ({sym}{:+,.0f}).</font>'.format(
+                        _ebit_ln["base"][_fy],
+                        _ebit_ln["scenario"][_fy],
+                        _ebit_ln["scenario"][_fy] - _ebit_ln["base"][_fy],
+                        sym=CURRENCY_SYMBOL),
+                    S_META))
         story.append(Spacer(1, 0.35 * cm))
 
     atbl = _assumptions_table(assumption_rows)
@@ -125,12 +154,25 @@ def scenario_pdf_bytes(request, echo, deltas, analysis_type, held_constant,
     return buffer.getvalue()
 
 
-def three_case_pdf_bytes(spreads, delta_rows, explanation, takeaways, basis_text):
+def three_case_pdf_bytes(spreads, delta_rows, explanation, takeaways,
+                         basis_text, case_monthly=None):
     """Build the three-case report and return it as PDF bytes. Reuses the same
     shared story builder the CLI PDF uses; only the output target differs."""
     buffer = BytesIO()
     story = _three_case_story(spreads, delta_rows, explanation, takeaways,
                               basis_text)
+
+    if case_monthly:
+        PAGE_W = A4[0] - 4 * cm
+        from streamlit_app.lib.charts import build_three_case_chart, chart_png_bytes
+        _fig = build_three_case_chart(case_monthly)
+        _imgbuf = chart_png_bytes(_fig)
+        _iw, _ih = ImageReader(_imgbuf).getSize()
+        _imgbuf.seek(0)
+        story.insert(2, Image(
+            _imgbuf, width=PAGE_W, height=PAGE_W * _ih / _iw))
+        story.insert(3, Spacer(1, 0.25 * cm))
+
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
         rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm,

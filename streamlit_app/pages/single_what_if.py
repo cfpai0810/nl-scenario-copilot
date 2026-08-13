@@ -1,5 +1,5 @@
 # =============================================================================
-# pages/single_what_if.py — the single what-if tool (Stage 3)
+# pages/single_what_if.py - the single what-if tool (Stage 3)
 # =============================================================================
 # Two phases, matching the governance diagram:
 #   Phase A: parse + validate + echo_back -> show the INTENT card, then STOP.
@@ -7,7 +7,7 @@
 # Nothing is calculated until the user confirms the interpretation. Results are
 # stored in session state and rendered from there, so a rerun (e.g. clicking
 # the PDF download) never loses the result. Every run is written to the
-# per-session activity record. A keyless example tab shows a full worked result
+# per-session audit record. A keyless example tab shows a full worked result
 # with no API key.
 #
 # All heavy logic is the existing, tested pipeline (src/step3..step6). This
@@ -19,6 +19,7 @@ from pathlib import Path
 
 import streamlit as st
 import pandas as pd
+from matplotlib import pyplot as plt
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
@@ -30,8 +31,13 @@ from streamlit_app.lib.errors import friendly_message
 from streamlit_app.lib import audit
 from streamlit_app.lib.web_emit import scenario_pdf_bytes
 from streamlit_app.lib.example_run import EXAMPLE
+from streamlit_app.lib.cost import estimate_cost, format_cost
+from streamlit_app.lib.charts import (
+    build_quarterly_chart, extract_quarterly_ebit, chart_png_bytes,
+)
+from streamlit_app.lib.explanation_cards import render_explanation_cards
 
-from config import EBIT_LABEL
+from config import EBIT_LABEL, CURRENCY_SYMBOL
 
 st.markdown(inject_css(), unsafe_allow_html=True)
 
@@ -93,34 +99,46 @@ with tab_example:
 
     e = EXAMPLE["ebit"]
     c1, c2, c3 = st.columns(3)
-    c1.metric("Base EBIT (forecast)", "{:,.0f}".format(e["base"]))
-    c2.metric("Scenario EBIT (forecast)", "{:,.0f}".format(e["scenario"]))
-    c3.metric("Change", "{:+,.0f}".format(e["delta"]),
+    c1.metric("Base EBIT (forecast)", "{}{:,.0f}".format(CURRENCY_SYMBOL, e["base"]))
+    c2.metric("Scenario EBIT (forecast)", "{}{:,.0f}".format(CURRENCY_SYMBOL, e["scenario"]))
+    c3.metric("Change", "{}{:+,.0f}".format(CURRENCY_SYMBOL, e["delta"]),
               delta="{:+.1%}".format(e["pct"]))
+
+    if EXAMPLE.get("chart_quarterly"):
+        _cq = EXAMPLE["chart_quarterly"]
+        _fig = build_quarterly_chart(_cq)
+        st.pyplot(_fig)
+        plt.close(_fig)
+        if _cq.get("fy_base") is not None:
+            st.caption(
+                "Full-year EBIT moves from {}{:,.0f} to {}{:,.0f} "
+                "({}{:+,.0f}).".format(
+                    CURRENCY_SYMBOL, _cq["fy_base"],
+                    CURRENCY_SYMBOL, _cq["fy_scenario"],
+                    CURRENCY_SYMBOL,
+                    _cq["fy_scenario"] - _cq["fy_base"]))
 
     st.divider()
 
     st.markdown("**Impact on the plan**")
     ex_df = pd.DataFrame([{
         "Line": d["line"],
-        "Base": "{:,.0f}".format(d["base"]),
-        "Scenario": "{:,.0f}".format(d["scenario"]),
-        "Change": "{:+,.0f}".format(d["delta"]),
+        "Base": "{}{:,.0f}".format(CURRENCY_SYMBOL, d["base"]),
+        "Scenario": "{}{:,.0f}".format(CURRENCY_SYMBOL, d["scenario"]),
+        "Change": "{}{:+,.0f}".format(CURRENCY_SYMBOL, d["delta"]),
         "%": "" if d["pct"] is None else "{:+.1%}".format(d["pct"]),
     } for d in EXAMPLE["deltas"]])
     st.dataframe(ex_df, use_container_width=True, hide_index=True)
 
     st.divider()
 
-    if EXAMPLE.get("takeaways"):
-        st.markdown("**Key takeaways**")
-        for t in EXAMPLE["takeaways"]:
-            st.write("- " + t)
+    render_explanation_cards(
+        EXAMPLE.get("takeaways"),
+        EXAMPLE["explanation"],
+        EXAMPLE.get("held_constant"))
 
-    st.markdown("**Explanation**")
-    st.write(EXAMPLE["explanation"])
-    if EXAMPLE.get("held_constant"):
-        st.info("Assumption held constant: " + " ".join(EXAMPLE["held_constant"]))
+    if EXAMPLE.get("tokens_in") is not None:
+        st.caption(format_cost(EXAMPLE["tokens_in"], EXAMPLE["tokens_out"]))
 
 # ── Live path ────────────────────────────────────────────────────────────────
 with tab_live:
@@ -152,7 +170,7 @@ with tab_live:
                     from src.step3_scenario_parser import call_claude_parse
                     from src.step4_validator import validate_change, classify_request
 
-                    scenario, _, _ = call_claude_parse(
+                    scenario, parse_in, parse_out = call_claude_parse(
                         request, base["forecast_periods"], client=client)
                     if not scenario or not scenario.get("changes"):
                         st.error(
@@ -168,6 +186,8 @@ with tab_live:
                             "request": request,
                             "results": results,
                             "classification": classification,
+                            "parse_tokens_in": parse_in,
+                            "parse_tokens_out": parse_out,
                         }
                         st.session_state.result = None
                         st.session_state.phase = "confirm"
@@ -194,7 +214,13 @@ with tab_live:
                 if status == "ILLEGAL":
                     st.write("- " + reason)
             if not p.get("recorded"):
-                audit.record_run(p["request"], "Refused before running", "refused")
+                cost_est = estimate_cost(
+                    p["parse_tokens_in"], p["parse_tokens_out"])
+                audit.record_run(
+                    p["request"], "Refused before running", "refused",
+                    tokens_in=p["parse_tokens_in"],
+                    tokens_out=p["parse_tokens_out"],
+                    cost_estimate=cost_est)
                 p["recorded"] = True
             if st.button("Try another request"):
                 _reset(); st.rerun()
@@ -208,7 +234,13 @@ with tab_live:
                 if status == "NEEDS_CLARIFICATION":
                     st.write("- " + reason)
             if not p.get("recorded"):
-                audit.record_run(p["request"], "Ambiguous, not run", "caution")
+                cost_est = estimate_cost(
+                    p["parse_tokens_in"], p["parse_tokens_out"])
+                audit.record_run(
+                    p["request"], "Ambiguous, not run", "caution",
+                    tokens_in=p["parse_tokens_in"],
+                    tokens_out=p["parse_tokens_out"],
+                    cost_estimate=cost_est)
                 p["recorded"] = True
             if st.button("Rephrase"):
                 _reset(); st.rerun()
@@ -390,12 +422,17 @@ with tab_live:
                             assumption_rows = build_assumptions_rows(
                                 base_context)
                             takeaways = build_takeaways(deltas, analysis)
-                            explanation, _, _ = call_claude_explain(
-                                p["request"], echo, headline, analysis,
-                                held_constant, base_ctx_text, client=client)
+                            explanation, explain_in, explain_out = \
+                                call_claude_explain(
+                                    p["request"], echo, headline, analysis,
+                                    held_constant, base_ctx_text, client=client)
+
+                            total_in = p["parse_tokens_in"] + explain_in
+                            total_out = p["parse_tokens_out"] + explain_out
 
                             rev = headline.get("Revenue")
                             ebit = headline.get("EBIT")
+                            cost_est = estimate_cost(total_in, total_out)
                             audit.record_run(
                                 p["request"], echo, "approved",
                                 revenue_delta=(rev["delta"]
@@ -403,7 +440,10 @@ with tab_live:
                                 ebit_delta=(ebit["delta"]
                                             if ebit else None),
                                 held_constant=held_constant,
-                                analysis_type=analysis)
+                                analysis_type=analysis,
+                                tokens_in=total_in,
+                                tokens_out=total_out,
+                                cost_estimate=cost_est)
 
                             st.session_state.result = {
                                 "request": p["request"],
@@ -416,6 +456,8 @@ with tab_live:
                                 "explanation": explanation,
                                 "held_constant": held_constant,
                                 "assumption_rows": assumption_rows,
+                                "tokens_in": total_in,
+                                "tokens_out": total_out,
                             }
                             st.session_state.phase = "result"
                             st.rerun()
@@ -434,14 +476,32 @@ with tab_live:
         if ebit_row:
             c1, c2, c3 = st.columns(3)
             c1.metric("Base EBIT (forecast)",
-                      "{:,.0f}".format(ebit_row["base"]))
+                      "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit_row["base"]))
             c2.metric("Scenario EBIT (forecast)",
-                      "{:,.0f}".format(ebit_row["scenario"]))
+                      "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit_row["scenario"]))
             c3.metric("Change",
-                      "{:+,.0f}".format(ebit_row["delta"]),
+                      "{}{:+,.0f}".format(CURRENCY_SYMBOL, ebit_row["delta"]),
                       delta=("{:+.1%}".format(ebit_row["pct"])
                              if ebit_row["pct"] is not None
                              else None))
+
+        q = res.get("quarterly")
+        if q:
+            _qebit = extract_quarterly_ebit(q)
+            _fig = build_quarterly_chart(_qebit)
+            st.pyplot(_fig)
+            plt.close(_fig)
+            _ebit_ln = next((l for l in q["lines"]
+                             if l["line"] == EBIT_LABEL), None)
+            if _ebit_ln:
+                _fy = q["columns"][-1]["key"]
+                st.caption(
+                    "Full-year EBIT moves from {}{:,.0f} to {}{:,.0f} "
+                    "({}{:+,.0f}).".format(
+                        CURRENCY_SYMBOL, _ebit_ln["base"][_fy],
+                        CURRENCY_SYMBOL, _ebit_ln["scenario"][_fy],
+                        CURRENCY_SYMBOL,
+                        _ebit_ln["scenario"][_fy] - _ebit_ln["base"][_fy]))
 
         st.divider()
 
@@ -457,9 +517,9 @@ with tab_live:
         show = moved if moved else res["deltas"]
         df = pd.DataFrame([{
             "Line": d["line"],
-            "Base": "{:,.0f}".format(d["base"]),
-            "Scenario": "{:,.0f}".format(d["scenario"]),
-            "Change": "{:+,.0f}".format(d["delta"]),
+            "Base": "{}{:,.0f}".format(CURRENCY_SYMBOL, d["base"]),
+            "Scenario": "{}{:,.0f}".format(CURRENCY_SYMBOL, d["scenario"]),
+            "Change": "{}{:+,.0f}".format(CURRENCY_SYMBOL, d["delta"]),
             "%": "" if d["pct"] is None else "{:+.1%}".format(d["pct"]),
         } for d in show])
         st.dataframe(df, use_container_width=True, hide_index=True)
@@ -480,9 +540,9 @@ with tab_live:
                     data.append(row)
                 return pd.DataFrame(data)
 
-            st.dataframe(_qgrid("scenario", lambda v: "{:,.0f}".format(v)),
+            st.dataframe(_qgrid("scenario", lambda v: "{}{:,.0f}".format(CURRENCY_SYMBOL, v)),
                          use_container_width=True, hide_index=True)
-            st.caption("Q1–Q2 are actuals; Q3–Q4 are your scenario "
+            st.caption("Q1-Q2 are actuals; Q3-Q4 are your scenario "
                        "forecast. FY combines them.")
 
             ebit_ln = next((l for l in q["lines"]
@@ -492,10 +552,12 @@ with tab_live:
                 fy_base = ebit_ln["base"][fy_key]
                 fy_scen = ebit_ln["scenario"][fy_key]
                 st.caption(
-                    "Full-year EBIT moves from {:,.0f} to {:,.0f}, the "
-                    "same {:+,.0f} as the forecast, because the H1 "
+                    "Full-year EBIT moves from {}{:,.0f} to {}{:,.0f}, the "
+                    "same {}{:+,.0f} as the forecast, because the H1 "
                     "actuals do not change.".format(
-                        fy_base, fy_scen, fy_scen - fy_base))
+                        CURRENCY_SYMBOL, fy_base,
+                        CURRENCY_SYMBOL, fy_scen,
+                        CURRENCY_SYMBOL, fy_scen - fy_base))
 
         mo = res.get("monthly")
         if mo:
@@ -512,37 +574,36 @@ with tab_live:
                     return pd.DataFrame(data)
 
                 st.markdown("**Scenario by month**")
-                st.dataframe(_grid("scenario", lambda v: "{:,.0f}".format(v)),
+                st.dataframe(_grid("scenario", lambda v: "{}{:,.0f}".format(CURRENCY_SYMBOL, v)),
                              use_container_width=True, hide_index=True)
 
                 st.markdown("**Change vs base, by month**")
-                st.dataframe(_grid("delta", lambda v: "{:+,.0f}".format(v)),
+                st.dataframe(_grid("delta", lambda v: "{}{:+,.0f}".format(CURRENCY_SYMBOL, v)),
                              use_container_width=True, hide_index=True)
 
                 st.markdown("**Base by month**")
-                st.dataframe(_grid("base", lambda v: "{:,.0f}".format(v)),
+                st.dataframe(_grid("base", lambda v: "{}{:,.0f}".format(CURRENCY_SYMBOL, v)),
                              use_container_width=True, hide_index=True)
 
         st.divider()
 
-        if res["takeaways"]:
-            st.markdown("**Key takeaways**")
-            for t in res["takeaways"]:
-                st.write("- " + t)
+        render_explanation_cards(
+            res["takeaways"], res["explanation"], res["held_constant"])
 
-        st.markdown("**Explanation**")
-        st.write(res["explanation"])
-
-        if res["held_constant"]:
-            st.info("Assumption held constant: " + " ".join(res["held_constant"]))
+        if res.get("tokens_in") is not None:
+            st.caption(format_cost(res["tokens_in"], res["tokens_out"]))
 
         try:
+            _qe = None
+            if res.get("quarterly"):
+                _qe = extract_quarterly_ebit(res["quarterly"])
             pdf = scenario_pdf_bytes(
                 res["request"], res["echo"], res["deltas"], res["analysis"],
                 res["held_constant"], res["explanation"],
                 res["assumption_rows"], res["takeaways"],
                 monthly=res.get("monthly"),
-                quarterly=res.get("quarterly"))
+                quarterly=res.get("quarterly"),
+                quarterly_ebit=_qe)
             st.download_button(
                 "Download the report (PDF)", data=pdf,
                 file_name="scenario_analysis.pdf", mime="application/pdf")
@@ -553,11 +614,11 @@ with tab_live:
         if st.button("Run another what-if"):
             _reset(); st.rerun()
 
-# ── The session activity record (visible governance) ─────────────────────────
+# ── The session audit record (visible governance) ──────────────────────────
 runs = audit.get_runs()
 if runs:
     st.markdown("---")
-    st.markdown("#### This session's activity")
+    st.markdown("#### This session's audit")
     st.caption("Every run you make is listed here for this session. It resets "
                "when the session ends. The downloadable version keeps a "
                "permanent record.")
@@ -566,4 +627,6 @@ if runs:
         cols[0].markdown(badge_html(r["status"]), unsafe_allow_html=True)
         cols[1].write(r["raw_request"])
         if r.get("ebit_delta") is not None:
-            cols[2].write("EBIT {:+,.0f}".format(r["ebit_delta"]))
+            cols[2].write("EBIT {}{:+,.0f}".format(CURRENCY_SYMBOL, r["ebit_delta"]))
+        if r.get("tokens_in") is not None:
+            st.caption(format_cost(r["tokens_in"], r["tokens_out"]))

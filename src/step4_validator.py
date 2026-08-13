@@ -13,6 +13,7 @@
 from config import (
     LINE_ITEMS, VALIDATION_RULES, SET_BOUNDS, SHIFT_BOUNDS,
     SET_SCHEDULE_BOUNDS, ADD_SCHEDULE_BOUNDS, SCENARIO_MAX_CHANGES,
+    CURRENCY_CODE,
 )
 
 _PCT_KIND = {
@@ -49,7 +50,7 @@ def _schedule_bounds_msg(target, dtype, op, val, lo, hi):
         return (
             "{target} is driven by {noun}. Adding {val:g} {unit} per month "
             "is outside the allowed range ({lo:g} to {hi:g}). If you meant a "
-            "euro amount, try phrasing it as a percentage change instead — "
+            "euro amount, try phrasing it as a percentage change instead - "
             "for example, 'increase marketing spend by 20 percent'."
         ).format(target=target, noun=noun, val=val, unit=unit, lo=lo, hi=hi)
     if op == "set_schedule":
@@ -71,7 +72,7 @@ def _set_driver_bounds_msg(target, dtype, val, lo, hi):
         return (
             "{target} is modelled as {kind}. Setting it to {val:g} is outside "
             "the allowed range ({lo:g} to {hi:g}). Remember that percentages "
-            "are entered as fractions — for example, 8 percent is 0.08, not 8."
+            "are entered as fractions - for example, 8 percent is 0.08, not 8."
         ).format(target=target, kind=_PCT_KIND[dtype], val=val, lo=lo, hi=hi)
     return (
         "Setting {target} to {val:g} is outside the allowed range "
@@ -109,7 +110,7 @@ def validate_change(change, forecast_periods=None):
     if vbp is not None:
         if not isinstance(vbp, dict) or len(vbp) == 0:
             return ("NEEDS_CLARIFICATION",
-                    "no forecast month matched the request — please name "
+                    "no forecast month matched the request - please name "
                     "specific months from the forecast horizon", None)
         periods_list = sorted(vbp.keys())
         for p, v in vbp.items():
@@ -128,7 +129,7 @@ def validate_change(change, forecast_periods=None):
     if val is None and vbp is None:
         return ("NEEDS_CLARIFICATION",
                 "the request for {} could not be read as a clear numeric "
-                "change. Try rephrasing — for example, 'increase {} by "
+                "change. Try rephrasing - for example, 'increase {} by "
                 "5 percent in July'.".format(target or "this line item",
                                              target or "it"),
                 None)
@@ -158,7 +159,7 @@ def validate_change(change, forecast_periods=None):
         return ("NEEDS_CLARIFICATION",
                 "{} is modelled as {} in this plan, not a euro amount, so it "
                 "cannot be changed by a fixed figure like {:g}. You can change "
-                "it in percentage terms instead — for example, shift it by a "
+                "it in percentage terms instead - for example, shift it by a "
                 "few percentage points, or set it to a specific "
                 "percentage.".format(target, _PCT_KIND[dtype], val),
                 None)
@@ -248,7 +249,7 @@ def validate_change(change, forecast_periods=None):
         for p in periods:
             if not isinstance(p, str) or not _PERIOD_RE.match(p):
                 return ("ILLEGAL",
-                        "invalid period '{}' — expected YYYY-MM format".format(p),
+                        "invalid period '{}' - expected YYYY-MM format".format(p),
                         None)
         if forecast_periods is not None:
             for p in periods:
@@ -296,8 +297,8 @@ def _echo_one(t, op, v, driver_type):
     if op == "shift_driver":
         if driver_type == "fixed":
             if v >= 0:
-                return "add EUR {:,.0f} to {}".format(v, t)
-            return "subtract EUR {:,.0f} from {}".format(abs(v), t)
+                return "add {} {:,.0f} to {}".format(CURRENCY_CODE, v, t)
+            return "subtract {} {:,.0f} from {}".format(CURRENCY_CODE, abs(v), t)
         direction = "increase" if v > 0 else "decrease"
         basis = _GROWTH_BASIS.get(driver_type)
         if basis:

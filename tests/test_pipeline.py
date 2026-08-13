@@ -28,14 +28,20 @@ import sys
 import copy
 from pathlib import Path
 
+import importlib
 import pytest
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+
+def _has_module(name):
+    return importlib.util.find_spec(name) is not None
+
 from config import (
     ACTUALS_FILE, DRIVERS_FILE, OPERATIONAL_FILE, HEADCOUNT_FILE, CUSTOMER_FILE,
     LINE_ITEMS, DRIVER_DIRECTION, SCENARIO_MAX_CHANGES, EBIT_LABEL,
+    CURRENCY_CODE, CURRENCY_SYMBOL,
 )
 from src.step1_data_loader import (
     load_actuals, load_drivers, detect_boundary,
@@ -395,7 +401,7 @@ class TestEchoBack:
     def test_shift_driver_fixed_reads_as_add(self):
         text = echo_back([{"target": "IT Infrastructure", "operation": "shift_driver",
                            "value": 30000, "driver_type": "fixed", "periods": "all"}])
-        assert "add EUR 30,000 to IT Infrastructure" in text
+        assert "add {} 30,000 to IT Infrastructure".format(CURRENCY_CODE) in text
 
     def test_shift_driver_pct_reads_as_increase_pp(self):
         text = echo_back([{"target": "Revenue", "operation": "shift_driver",
@@ -2003,7 +2009,7 @@ class TestThreeCaseTableHelpers:
         assert abs(v - 0.12) < 1e-9
 
     def test_parse_round_trip_fixed(self):
-        v, err = parse_case_value("IT Infrastructure", "EUR 45,000")
+        v, err = parse_case_value("IT Infrastructure", "{} 45,000".format(CURRENCY_CODE))
         assert err is None
         assert abs(v - 45000) < 1e-9
 
@@ -2304,3 +2310,285 @@ class TestQuarterlyFYView:
             "Test explanation.", [], [])
         assert isinstance(pdf_without, bytes)
         assert len(pdf_with) > len(pdf_without)
+
+
+# =============================================================================
+# 20. Cost estimate
+# =============================================================================
+
+from streamlit_app.lib.cost import estimate_cost, format_cost
+from streamlit_app.lib.example_run import EXAMPLE
+from streamlit_app.lib.example_three_case import THREE_CASE_EXAMPLE
+
+
+class TestCostEstimate:
+
+    def test_estimate_cost_basic(self):
+        c = estimate_cost(1926, 348)
+        assert c["usd"] == pytest.approx(0.011, abs=0.001)
+        assert c["eur"] == pytest.approx(0.010, abs=0.001)
+        assert c["tokens_total"] == 2274
+
+    def test_format_cost_subcent_says_less_than(self):
+        line = format_cost(1, 1)
+        assert "less than EUR 0.01" in line
+        assert "EUR 0.00" not in line
+        assert "0.0000" not in line
+
+    def test_format_cost_has_no_dashes(self):
+        line = format_cost(1926, 348)
+        assert "—" not in line and "–" not in line
+
+    def test_format_cost_contains_billed_by_anthropic(self):
+        line = format_cost(1926, 348)
+        assert "billed by Anthropic" in line
+
+    def test_format_cost_shows_token_breakdown(self):
+        line = format_cost(1926, 348)
+        assert "1,926 in" in line
+        assert "348 out" in line
+        assert "2,274 tokens" in line
+
+    def test_single_whatif_total_equals_sum_of_parse_and_explain(self):
+        parse_in, parse_out = 1581, 82
+        explain_in, explain_out = 345, 266
+        total_in = parse_in + explain_in
+        total_out = parse_out + explain_out
+        combined = estimate_cost(total_in, total_out)
+        separate_usd = (estimate_cost(parse_in, parse_out)["usd"]
+                        + estimate_cost(explain_in, explain_out)["usd"])
+        assert combined["usd"] == pytest.approx(separate_usd, abs=1e-9)
+        assert combined["tokens_total"] == (parse_in + parse_out
+                                            + explain_in + explain_out)
+
+    def test_three_case_total_is_explain_only(self):
+        explain_in, explain_out = 327, 402
+        c = estimate_cost(explain_in, explain_out)
+        assert c["tokens_total"] == 729
+
+    def test_example_has_real_token_counts(self):
+        assert EXAMPLE["tokens_in"] > 0
+        assert EXAMPLE["tokens_out"] > 0
+        c = estimate_cost(EXAMPLE["tokens_in"], EXAMPLE["tokens_out"])
+        assert c["usd"] > 0
+
+    def test_three_case_example_has_real_token_counts(self):
+        assert THREE_CASE_EXAMPLE["tokens_in"] > 0
+        assert THREE_CASE_EXAMPLE["tokens_out"] > 0
+        c = estimate_cost(THREE_CASE_EXAMPLE["tokens_in"],
+                          THREE_CASE_EXAMPLE["tokens_out"])
+        assert c["usd"] > 0
+
+    def test_audit_record_carries_tokens_and_cost(self):
+        st = pytest.importorskip("streamlit")
+        from streamlit_app.lib import audit
+        st.session_state["audit_runs"] = []
+        cost_est = estimate_cost(100, 50)
+        audit.record_run("test request", "test echo", "approved",
+                         tokens_in=100, tokens_out=50,
+                         cost_estimate=cost_est)
+        runs = audit.get_runs()
+        assert len(runs) == 1
+        r = runs[0]
+        assert r["tokens_in"] == 100
+        assert r["tokens_out"] == 50
+        assert r["cost_estimate"]["usd"] == cost_est["usd"]
+        st.session_state["audit_runs"] = []
+
+    def test_audit_record_no_tokens_when_omitted(self):
+        st = pytest.importorskip("streamlit")
+        from streamlit_app.lib import audit
+        st.session_state["audit_runs"] = []
+        audit.record_run("refused request", "Refused", "refused")
+        runs = audit.get_runs()
+        assert runs[0]["tokens_in"] is None
+        assert runs[0]["tokens_out"] is None
+        assert runs[0]["cost_estimate"] is None
+        st.session_state["audit_runs"] = []
+
+
+# =============================================================================
+# CLASS 21: charts
+# =============================================================================
+
+@pytest.mark.skipif(
+    not _has_module("matplotlib"),
+    reason="matplotlib not installed in this venv")
+class TestCharts:
+
+    def test_quarterly_chart_returns_figure(self):
+        from matplotlib.figure import Figure
+        from matplotlib import pyplot as plt
+        from streamlit_app.lib.charts import build_quarterly_chart
+        from streamlit_app.lib.example_run import EXAMPLE
+        fig = build_quarterly_chart(EXAMPLE["chart_quarterly"])
+        assert isinstance(fig, Figure)
+        plt.close(fig)
+
+    def test_three_case_chart_returns_figure(self):
+        from matplotlib.figure import Figure
+        from matplotlib import pyplot as plt
+        from streamlit_app.lib.charts import build_three_case_chart
+        from streamlit_app.lib.example_three_case import THREE_CASE_EXAMPLE
+        fig = build_three_case_chart(THREE_CASE_EXAMPLE["case_monthly"])
+        assert isinstance(fig, Figure)
+        plt.close(fig)
+
+    def test_chart_png_bytes_returns_png(self):
+        from streamlit_app.lib.charts import build_quarterly_chart, chart_png_bytes
+        from streamlit_app.lib.example_run import EXAMPLE
+        fig = build_quarterly_chart(EXAMPLE["chart_quarterly"])
+        buf = chart_png_bytes(fig)
+        data = buf.read()
+        assert data[:8] == b'\x89PNG\r\n\x1a\n'
+
+    def test_quarterly_chart_has_no_dashes(self):
+        import matplotlib.text
+        from matplotlib import pyplot as plt
+        from streamlit_app.lib.charts import build_quarterly_chart
+        from streamlit_app.lib.example_run import EXAMPLE
+        fig = build_quarterly_chart(EXAMPLE["chart_quarterly"])
+        texts = [t.get_text() for t in fig.findobj(matplotlib.text.Text)]
+        for t in texts:
+            assert "—" not in t and "–" not in t
+        plt.close(fig)
+
+    def test_three_case_chart_has_no_dashes(self):
+        import matplotlib.text
+        from matplotlib import pyplot as plt
+        from streamlit_app.lib.charts import build_three_case_chart
+        from streamlit_app.lib.example_three_case import THREE_CASE_EXAMPLE
+        fig = build_three_case_chart(THREE_CASE_EXAMPLE["case_monthly"])
+        texts = [t.get_text() for t in fig.findobj(matplotlib.text.Text)]
+        for t in texts:
+            assert "—" not in t and "–" not in t
+        plt.close(fig)
+
+    def test_extract_quarterly_ebit_filters_fy(self):
+        from streamlit_app.lib.charts import extract_quarterly_ebit
+        quarterly = {
+            "columns": [
+                {"key": "Q1 2026", "kind": "actual"},
+                {"key": "Q2 2026", "kind": "actual"},
+                {"key": "Q3 2026", "kind": "forecast"},
+                {"key": "Q4 2026", "kind": "forecast"},
+                {"key": "FY 2026", "kind": "fy"},
+            ],
+            "lines": [{
+                "line": EBIT_LABEL,
+                "base": {"Q1 2026": 100, "Q2 2026": 200, "Q3 2026": 300,
+                         "Q4 2026": 400, "FY 2026": 1000},
+                "scenario": {"Q1 2026": 100, "Q2 2026": 200, "Q3 2026": 350,
+                             "Q4 2026": 450, "FY 2026": 1100},
+                "delta": {},
+            }],
+        }
+        result = extract_quarterly_ebit(quarterly)
+        assert len(result["labels"]) == 4
+        assert "FY 2026" not in result["labels"]
+        assert result["kinds"] == ["actual", "actual", "forecast", "forecast"]
+        assert result["base"] == [100, 200, 300, 400]
+        assert result["scenario"] == [100, 200, 350, 450]
+
+    def test_example_has_chart_quarterly(self):
+        from streamlit_app.lib.example_run import EXAMPLE
+        cq = EXAMPLE["chart_quarterly"]
+        assert len(cq["labels"]) == 4
+        assert len(cq["base"]) == 4
+        assert len(cq["scenario"]) == 4
+        assert cq["kinds"].count("actual") == 2
+        assert cq["kinds"].count("forecast") == 2
+
+    def test_three_case_example_has_case_monthly(self):
+        from streamlit_app.lib.example_three_case import THREE_CASE_EXAMPLE
+        cm = THREE_CASE_EXAMPLE["case_monthly"]
+        assert len(cm["periods"]) == 6
+        assert len(cm["pessimistic"]) == 6
+        assert len(cm["realistic"]) == 6
+        assert len(cm["optimistic"]) == 6
+
+    def test_realistic_ordering_in_example(self):
+        from streamlit_app.lib.example_three_case import THREE_CASE_EXAMPLE
+        cm = THREE_CASE_EXAMPLE["case_monthly"]
+        for p, r in zip(cm["pessimistic"], cm["realistic"]):
+            assert r > p
+        for o, r in zip(cm["optimistic"], cm["realistic"]):
+            assert o > r
+
+    def test_build_case_monthly_ebit(self, base):
+        from src.step8_three_case import build_case_monthly_ebit
+        base_val = spread_base_for("Revenue", base["drivers_df"])
+        cases = {
+            "pessimistic": {"Revenue": base_val - 0.03},
+            "realistic":   {"Revenue": base_val},
+            "optimistic":  {"Revenue": base_val + 0.03},
+        }
+        results = run_three_case(base, cases)
+        cm = build_case_monthly_ebit(results, base["forecast_periods"])
+        assert cm["periods"] == list(base["forecast_periods"])
+        assert len(cm["pessimistic"]) == len(base["forecast_periods"])
+        assert len(cm["realistic"]) == len(base["forecast_periods"])
+        assert len(cm["optimistic"]) == len(base["forecast_periods"])
+        for p, r, o in zip(cm["pessimistic"], cm["realistic"],
+                           cm["optimistic"]):
+            assert p < r < o
+
+
+# =============================================================================
+# CLASS 22: explanation cards
+# =============================================================================
+
+class TestExplanationCards:
+    """Card treatment for the explanation surface: verbatim guard and escaping."""
+
+    def test_example_explanation_verbatim_single(self):
+        """Splitting the single what-if example on paragraph breaks must
+        preserve all content unchanged."""
+        explanation = EXAMPLE["explanation"]
+        paragraphs = [p.strip() for p in explanation.split("\n\n") if p.strip()]
+        rejoined = "\n\n".join(paragraphs)
+        assert rejoined == explanation.strip()
+
+    def test_example_explanation_verbatim_three_case(self):
+        """Splitting the three-case example on paragraph breaks must
+        preserve all content unchanged."""
+        explanation = THREE_CASE_EXAMPLE["explanation"]
+        paragraphs = [p.strip() for p in explanation.split("\n\n") if p.strip()]
+        rejoined = "\n\n".join(paragraphs)
+        assert rejoined == explanation.strip()
+
+    def test_takeaway_escaping_hostile_string(self):
+        """Takeaway text containing HTML must be escaped in the callout."""
+        import html as _html
+        hostile = '<script>alert("xss")</script> & < > "test"'
+        escaped = _html.escape(hostile)
+        assert "<script>" not in escaped
+        assert "&lt;script&gt;" in escaped
+        assert "&amp;" in escaped
+
+    def test_held_constant_escaping_hostile_string(self):
+        """Held-constant text containing HTML must be escaped."""
+        import html as _html
+        hostile = 'Revenue <b>unchanged</b> & model assumption'
+        escaped = _html.escape(hostile)
+        assert "<b>" not in escaped
+        assert "&lt;b&gt;" in escaped
+        assert "&amp;" in escaped
+
+    def test_example_parts_present_single(self):
+        """The single what-if example carries all explanation parts."""
+        assert isinstance(EXAMPLE["takeaways"], list)
+        assert len(EXAMPLE["takeaways"]) >= 2
+        assert isinstance(EXAMPLE["explanation"], str)
+        assert "\n\n" in EXAMPLE["explanation"]
+        assert isinstance(EXAMPLE["held_constant"], list)
+        assert len(EXAMPLE["held_constant"]) >= 1
+
+    def test_example_parts_present_three_case(self):
+        """The three-case example carries takeaways and explanation;
+        held_constant is absent by design."""
+        assert isinstance(THREE_CASE_EXAMPLE["takeaways"], list)
+        assert len(THREE_CASE_EXAMPLE["takeaways"]) >= 2
+        assert isinstance(THREE_CASE_EXAMPLE["explanation"], str)
+        assert "\n\n" in THREE_CASE_EXAMPLE["explanation"]
+        assert "held_constant" not in THREE_CASE_EXAMPLE

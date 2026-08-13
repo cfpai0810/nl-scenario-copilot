@@ -70,4 +70,22 @@ EXAMPLE = {
         "is modelled on its own seasonal trend, so the revenue line is "
         "unchanged in this scenario.",
     ],
+
+    # Quarterly EBIT for the chart (Q1-Q4, no FY). Q1-Q2 are actuals;
+    # Q3-Q4 are forecast. Values from the same live run as the deltas above.
+    # fy_base / fy_scenario are the full-year totals (sum of Q1-Q4) for the
+    # caption under the chart; they match the FY column in the quarterly table.
+    "chart_quarterly": {
+        "labels": ["Q1 2026", "Q2 2026", "Q3 2026", "Q4 2026"],
+        "kinds": ["actual", "actual", "forecast", "forecast"],
+        "base":     [179300.0, 301100.0, 156018.45, 386172.06],
+        "scenario": [179300.0, 301100.0, 189618.45, 429372.06],
+        "fy_base": 1022590.51,
+        "fy_scenario": 1099390.51,
+    },
+
+    # Real token counts captured from a live run of this example (parse +
+    # explain, inputs and outputs summed separately across both calls).
+    "tokens_in": 1926,
+    "tokens_out": 348,
 }

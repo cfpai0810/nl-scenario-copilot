@@ -87,3 +87,17 @@ def case_ebit_summary(delta_rows):
         if r["line"] == EBIT_LABEL:
             return r
     return None
+
+
+def build_case_monthly_ebit(results, forecast_periods):
+    """Extract per-month EBIT for each case from the run_three_case results.
+
+    Returns {periods, pessimistic, realistic, optimistic} where each case
+    value is a list of EBIT floats aligned with periods.
+    """
+    out = {"periods": list(forecast_periods)}
+    for name in CASE_ORDER:
+        pnl = results[name]
+        ebit_row = pnl[pnl["line"] == EBIT_LABEL].iloc[0]
+        out[name.lower()] = [float(ebit_row[p]) for p in forecast_periods]
+    return out
