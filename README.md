@@ -291,7 +291,7 @@ hashlib · pytest
 | 2 | Driver-Based Rolling Forecast Pipeline | Complete |
 | 3 | Anomaly Detection and Alert Agent | Complete |
 | 4 | NL Scenario Modelling Copilot | This project |
-| 5 | Budget Challenge Assistant | Planned |
+| 5 | Reconciliation and Tie-Out Assistant | Planned |
 | 6 | Agentic Board Pack Generator | Planned |
 | 7 | Planning-to-Warehouse-to-LLM Pipeline | Planned |
 | 8 | 13-Week Cash Flow Forecasting Agent | Planned |
