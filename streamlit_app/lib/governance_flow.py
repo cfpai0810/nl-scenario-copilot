@@ -1,5 +1,5 @@
 # =============================================================================
-# lib/governance_flow.py — the signature diagram
+# lib/governance_flow.py: the signature diagram
 # =============================================================================
 # The three-layer governance model as a flow that carries the logic, not three
 # static boxes. A person opens and closes every run; the model works only in

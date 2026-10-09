@@ -1,5 +1,5 @@
 # =============================================================================
-# step7_scenario_spread.py — Three-case spread calculator
+# step7_scenario_spread.py: Three-case spread calculator
 # =============================================================================
 # Derives pessimistic / realistic / optimistic values for a driver, using
 # either historical data (for derivable driver types) or a preset band.

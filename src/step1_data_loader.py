@@ -1,5 +1,5 @@
 # =============================================================================
-# step1_data_loader.py — Layer 2: Data Loading and Validation
+# step1_data_loader.py: Layer 2: Data Loading and Validation
 # =============================================================================
 # Responsibilities:
 #   - load_actuals():     load and validate the actuals CSV

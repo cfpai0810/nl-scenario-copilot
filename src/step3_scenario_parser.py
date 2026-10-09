@@ -1,5 +1,5 @@
 # =============================================================================
-# step3_scenario_parser.py — PARSE: natural language to structured scenario
+# step3_scenario_parser.py: PARSE: natural language to structured scenario
 # =============================================================================
 # Claude extracts structure and numbers only. It does no arithmetic and never
 # computes a result. Returns a scenario dict, or None on a parse failure so

@@ -1,5 +1,5 @@
 # =============================================================================
-# lib/key_gate.py — the bring-your-own-key gate (foundation component)
+# lib/key_gate.py: the bring-your-own-key gate (foundation component)
 # =============================================================================
 # Renders the API-key input, holds the key ONLY in session state for the live
 # session, and builds a per-session Anthropic client. The key is never written

@@ -1,5 +1,5 @@
 # =============================================================================
-# step4_validator.py — VALIDATE: the deterministic gate
+# step4_validator.py: VALIDATE: the deterministic gate
 # =============================================================================
 # Every change from the parser is validated here against the model's real
 # line items and sane bounds. This layer NEVER calls Claude. It is fully

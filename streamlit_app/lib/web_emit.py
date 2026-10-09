@@ -1,5 +1,5 @@
 # =============================================================================
-# lib/web_emit.py — web-safe output (PDF to bytes, no disk, no shared file)
+# lib/web_emit.py: web-safe output (PDF to bytes, no disk, no shared file)
 # =============================================================================
 # The CLI's write_pdf builds a story from pure reportlab helpers, writes it to
 # a file, and mutates the shared audit JSONL. On the web we want the SAME

@@ -1,5 +1,5 @@
 # =============================================================================
-# review.py — Analyst sign-off for a scenario run
+# review.py: Analyst sign-off for a scenario run
 # =============================================================================
 # Usage:
 #   python review.py

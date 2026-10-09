@@ -1,5 +1,5 @@
 # =============================================================================
-# main.py — NL Scenario Modelling Copilot
+# main.py: NL Scenario Modelling Copilot
 # Pass 1: flat script, interactive entry, understand every line
 # =============================================================================
 #

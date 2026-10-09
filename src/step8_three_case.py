@@ -1,5 +1,5 @@
 # =============================================================================
-# step8_three_case.py — run a pessimistic / realistic / optimistic analysis
+# step8_three_case.py: run a pessimistic / realistic / optimistic analysis
 # =============================================================================
 # Flexes ONE driver across three cases, runs the base plus each case through
 # the reused Project 2 engine on deep copies, and builds a multi-column delta

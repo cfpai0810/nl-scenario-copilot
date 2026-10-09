@@ -1,5 +1,5 @@
 # =============================================================================
-# tests/test_pipeline.py — NL Scenario Modelling Copilot
+# tests/test_pipeline.py: NL Scenario Modelling Copilot
 # =============================================================================
 # Phase 5: VALIDATE
 #

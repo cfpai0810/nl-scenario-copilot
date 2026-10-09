@@ -1,5 +1,5 @@
 # =============================================================================
-# lib/errors.py — friendly error handling for a non-technical audience
+# lib/errors.py: friendly error handling for a non-technical audience
 # =============================================================================
 # A business user must never see a Python traceback. Every failure becomes a
 # plain-language message that says what went wrong and what to do. This wraps

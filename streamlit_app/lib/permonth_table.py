@@ -1,5 +1,5 @@
 # =============================================================================
-# permonth_table.py — pure helpers for the per-month editable intent table
+# permonth_table.py: pure helpers for the per-month editable intent table
 # =============================================================================
 # Display ↔ machine value conversion, table rebuild, and change detection.
 # Importable and testable without Streamlit.

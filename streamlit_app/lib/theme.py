@@ -1,5 +1,5 @@
 # =============================================================================
-# lib/theme.py — one visual identity, shared with the PDF
+# lib/theme.py: one visual identity, shared with the PDF
 # =============================================================================
 # The exact palette the PDFs already use (step6_explainer), so the web app and
 # the report it produces read as a single product. Governance status colours

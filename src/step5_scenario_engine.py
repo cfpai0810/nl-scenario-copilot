@@ -1,5 +1,5 @@
 # =============================================================================
-# step5_scenario_engine.py — RUN: apply changes, rerun base and scenario
+# step5_scenario_engine.py: RUN: apply changes, rerun base and scenario
 # =============================================================================
 # Applies validated changes to DEEP COPIES of the base DataFrames, reruns the
 # reused Project 2 engine for both base and scenario, and computes the full

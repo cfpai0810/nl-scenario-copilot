@@ -1,5 +1,5 @@
 # =============================================================================
-# lib/claude_client.py — the client-provider seam
+# lib/claude_client.py: the client-provider seam
 # =============================================================================
 # Solves the bring-your-own-key problem. The CLI created the Anthropic client
 # once at import time from the .env key. The web cannot do that: the user

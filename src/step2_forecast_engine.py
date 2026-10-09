@@ -1,5 +1,5 @@
 # =============================================================================
-# step2_forecast_engine.py — Layer 3: Forecast Calculation Engine
+# step2_forecast_engine.py: Layer 3: Forecast Calculation Engine
 # =============================================================================
 # Responsibilities:
 #   - derive_seasonal_indices(): derive monthly seasonality from a full year

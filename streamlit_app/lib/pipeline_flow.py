@@ -1,5 +1,5 @@
 # =============================================================================
-# lib/pipeline_flow.py — the pipeline diagram (matches governance_flow's language)
+# lib/pipeline_flow.py: the pipeline diagram (matches governance_flow's language)
 # =============================================================================
 # One SVG, same visual grammar as governance_flow.py: purple = the model (used
 # only for language, never numbers), green = deterministic engine, dark blue =

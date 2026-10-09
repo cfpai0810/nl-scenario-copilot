@@ -1,5 +1,5 @@
 # =============================================================================
-# threecase_table.py — pure helpers for the three-case editable spread table
+# threecase_table.py: pure helpers for the three-case editable spread table
 # =============================================================================
 # Display ↔ machine value conversion for the three-case table. Importable and
 # testable without Streamlit.

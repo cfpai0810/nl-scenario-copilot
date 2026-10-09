@@ -1,5 +1,5 @@
 # =============================================================================
-# step6_explainer.py — EXPLAIN and OUTPUT
+# step6_explainer.py: EXPLAIN and OUTPUT
 # =============================================================================
 # Claude narrates the computed result: what changed, what happened to Revenue
 # and EBIT, whether it was a sensitivity or a scenario, and any assumption

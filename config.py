@@ -1,5 +1,5 @@
 # =============================================================================
-# config.py — NL Scenario Modelling Copilot
+# config.py: NL Scenario Modelling Copilot
 # =============================================================================
 
 import os
