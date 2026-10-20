@@ -2605,3 +2605,170 @@ class TestDeploymentPins:
         if version("streamlit").startswith("1.60."):
             major, minor = (int(part) for part in version("starlette").split(".")[:2])
             assert (major, minor) < (1, 8)
+
+
+# =============================================================================
+# Step 2, bundle 1: plain failure messages and the key gate
+# =============================================================================
+import anthropic
+import httpx
+
+from streamlit_app.lib.errors import (
+    failure_code, friendly_message, model_failure_message, KEY_LOOKS_COMPLETE,
+)
+
+APP_DIR = Path(__file__).resolve().parent.parent / "streamlit_app"
+STAND_IN_KEY = "sk-ant-api03-" + "x" * 90
+
+
+def _sdk_error(cls, status):
+    """A stand-in SDK error built from httpx objects; nothing is sent."""
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    return cls("stand-in", response=httpx.Response(status, request=request),
+               body=None)
+
+
+def _stand_in_anthropic(error=None):
+    """A stand-in for anthropic.Anthropic that records each key it is built
+    with and, when error is given, raises it on every model call."""
+    class StandIn:
+        built = []
+
+        def __init__(self, api_key=None, **kwargs):
+            StandIn.built.append(api_key)
+            self.messages = self
+
+        def create(self, **kwargs):
+            if error is not None:
+                raise error
+            raise AssertionError("no model call is expected in this test")
+    return StandIn
+
+
+class TestItem17ModelFailures:
+    """One plain message per kind of failed model call (items 17 and 55)."""
+
+    @pytest.mark.parametrize("cls,status,code", [
+        (anthropic.AuthenticationError, 401, "key_rejected"),
+        (anthropic.PermissionDeniedError, 403, "key_forbidden"),
+        (anthropic.NotFoundError, 404, "model_not_found"),
+        (anthropic.RateLimitError, 429, "rate_limited"),
+        (anthropic.BadRequestError, 400, "bad_request"),
+        (anthropic.InternalServerError, 500, "service_unavailable"),
+    ])
+    def test_item17_each_status_maps_to_one_code(self, cls, status, code):
+        exc = _sdk_error(cls, status)
+        assert failure_code(exc) == code
+        message = friendly_message(exc)
+        assert message == model_failure_message(code)
+        assert message.endswith("Code: `{}`".format(code))
+        assert cls.__name__ not in message
+        assert "Error" not in message
+
+    def test_item17_overloaded_and_connection_are_service_unavailable(self):
+        assert failure_code(_sdk_error(anthropic.APIStatusError, 529)) == \
+            "service_unavailable"
+        request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+        assert failure_code(anthropic.APIConnectionError(request=request)) == \
+            "service_unavailable"
+
+    def test_item17_no_usually_temporary_for_400_or_404(self):
+        for code in ("bad_request", "model_not_found"):
+            assert "usually temporary" not in model_failure_message(code)
+        assert "claude-" in model_failure_message("model_not_found")
+
+    def test_item17_parser_wrap_still_names_the_key(self):
+        """The parser wraps the SDK error in RuntimeError; the cause chain
+        still maps it, so the single what-if names the key too."""
+        from src.step3_scenario_parser import call_claude_parse
+        client = _stand_in_anthropic(
+            _sdk_error(anthropic.AuthenticationError, 401))(api_key="x")
+        with pytest.raises(RuntimeError) as info:
+            call_claude_parse("Cut marketing by 20 percent", ["2026-07"],
+                              client=client)
+        assert friendly_message(info.value) == \
+            model_failure_message("key_rejected")
+
+    def test_item17_other_failures_stay_plain(self):
+        from streamlit_app.lib.claude_client import NoKeyError
+        assert "sidebar" in friendly_message(NoKeyError("no key"))
+        generic = friendly_message(ValueError("boom"))
+        assert "example prompts" in generic
+        assert "ValueError" not in generic and "boom" not in generic
+        assert failure_code(ValueError("boom")) is None
+
+    @staticmethod
+    def _enter_key(at):
+        at.text_input(key="byo_api_key").input(STAND_IN_KEY).run()
+
+    def test_item55_single_what_if_shows_the_key_message(self, monkeypatch):
+        from streamlit.testing.v1 import AppTest
+        monkeypatch.setattr(anthropic, "Anthropic", _stand_in_anthropic(
+            _sdk_error(anthropic.AuthenticationError, 401)))
+        at = AppTest.from_file(str(APP_DIR / "pages" / "single_what_if.py"),
+                               default_timeout=60).run()
+        self._enter_key(at)
+        next(t for t in at.text_input if t.label == "Your what-if").input(
+            "Cut marketing spend by 20 percent")
+        next(b for b in at.button if b.label == "Interpret this").click().run()
+        assert [e.value for e in at.error] == \
+            [model_failure_message("key_rejected")]
+
+    def test_item55_three_case_shows_the_same_key_message(self, monkeypatch):
+        from streamlit.testing.v1 import AppTest
+        monkeypatch.setattr(anthropic, "Anthropic", _stand_in_anthropic(
+            _sdk_error(anthropic.AuthenticationError, 401)))
+        at = AppTest.from_file(str(APP_DIR / "pages" / "three_case.py"),
+                               default_timeout=60).run()
+        self._enter_key(at)
+        at.multiselect[0].set_value(["COGS margin"]).run()
+        next(b for b in at.button if b.label == "Derive cases").click().run()
+        next(b for b in at.button if b.label == "Confirm and run").click().run()
+        assert [e.value for e in at.error] == \
+            [model_failure_message("key_rejected")]
+
+
+class TestItem2And4KeyGate:
+    """The key gate's privacy wording (item 2) and its persistence across
+    pages (item 4)."""
+
+    def test_item2_privacy_wording(self, monkeypatch):
+        from streamlit.testing.v1 import AppTest
+        monkeypatch.setattr(anthropic, "Anthropic", _stand_in_anthropic())
+        at = AppTest.from_file(str(APP_DIR / "Home.py"),
+                               default_timeout=60).run()
+        box = at.text_input(key="byo_api_key")
+        assert box.help == ("Held in the server's memory for this session "
+                            "only. Never stored, never logged.")
+        notes = " ".join(m.value for m in at.sidebar.markdown)
+        assert ("Your key is held in the server's memory for your session "
+                "only, used to make the call, and never stored or logged. If "
+                "you would rather your key never leave your own machine, "
+                "download the project from GitHub and run it locally.") in notes
+        assert "browser" not in notes
+        box.input(STAND_IN_KEY).run()
+        assert [s.value for s in at.sidebar.success] == [KEY_LOOKS_COMPLETE]
+
+    def test_item2_module_header_does_not_overclaim(self):
+        source = (APP_DIR / "lib" / "key_gate.py").read_text(encoding="utf-8")
+        assert "stored server-side" not in source
+        assert "browser" not in source.lower()
+        assert "Key accepted" not in source
+
+    def test_item4_key_entered_on_home_works_on_single_what_if(self, monkeypatch):
+        from streamlit.testing.v1 import AppTest
+        stand_in = _stand_in_anthropic()
+        monkeypatch.setattr(anthropic, "Anthropic", stand_in)
+        at = AppTest.from_file(str(APP_DIR / "Home.py"),
+                               default_timeout=60).run()
+        at.text_input(key="byo_api_key").input(STAND_IN_KEY).run()
+        assert at.session_state["live_client"] is not None
+        stand_in.built.clear()
+
+        at.switch_page("pages/single_what_if.py").run()
+        assert not at.exception
+        assert at.text_input(key="byo_api_key").value == STAND_IN_KEY
+        assert stand_in.built == [STAND_IN_KEY]
+        assert [s.value for s in at.sidebar.success] == [KEY_LOOKS_COMPLETE]
+        assert not any("Paste your Anthropic API key" in i.value
+                       for i in at.info)

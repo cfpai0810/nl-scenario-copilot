@@ -187,10 +187,10 @@ def call_claude_parse(request, forecast_periods, client=None):
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         )
-    except anthropic.AuthenticationError:
-        raise RuntimeError("Authentication failed. Check ANTHROPIC_API_KEY in .env.")
+    except anthropic.AuthenticationError as e:
+        raise RuntimeError("Authentication failed. Check ANTHROPIC_API_KEY in .env.") from e
     except anthropic.APIStatusError as e:
-        raise RuntimeError("API error {}: {}".format(e.status_code, e.message))
+        raise RuntimeError("API error {}: {}".format(e.status_code, e.message)) from e
 
     text     = response.content[0].text
     scenario = parse_scenario_json(text)
