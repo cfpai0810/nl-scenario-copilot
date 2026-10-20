@@ -31,3 +31,5 @@ streamlit==1.60.0
 typing-inspection==0.4.2
 typing_extensions==4.16.0
 tzdata==2026.3
+# Streamlit 1.60 cannot serve images with starlette 1.8 or later
+starlette==1.7.0
