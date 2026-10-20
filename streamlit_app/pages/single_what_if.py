@@ -6,8 +6,9 @@
 #   Phase B: on Confirm -> apply + forecast + deltas + explain -> render.
 # Nothing is calculated until the user confirms the interpretation. Results are
 # stored in session state and rendered from there, so a rerun (e.g. clicking
-# the PDF download) never loses the result. Every run is written to the
-# per-session audit record. A keyless example tab shows a full worked result
+# the PDF download) never loses the result. Each finished, refused or
+# ambiguous run is written to the per-session audit record (a confirm-step
+# Rephrase records nothing). A keyless example tab shows a full worked result
 # with no API key.
 #
 # All heavy logic is the existing, tested pipeline (src/step3..step6). This

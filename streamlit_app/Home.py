@@ -66,9 +66,10 @@ def _home_page():
         "output can be trusted: the language model reads your request and "
         "writes the explanation, a deterministic engine performs every "
         "calculation, and a person approves the outcome. The diagram above is "
-        "that principle in full. The intelligence sits at the edges; the "
-        "numbers in the middle are computed the way a spreadsheet would compute "
-        "them, and never by the model.")
+        "that principle in full. The intelligence sits at the edges: Python "
+        "produces every reported figure, the way a spreadsheet would, and the "
+        "model writes the wording around it. This version does not check the "
+        "numbers in that wording, so read the table for figures.")
 
     # ── Sample-data status (the acceptance check) ────────────────────────────
     st.markdown("#### The sample company")
@@ -111,13 +112,16 @@ def _home_page():
             "once, so copy it when it is created. Paste it into the sidebar "
             "here to run a live analysis.")
         st.write(
-            "What it costs. Each run makes two short calls to Claude Sonnet, "
-            "one to read your request and one to explain the result. At "
-            "Sonnet's current rate of about three US dollars per million input "
-            "tokens and fifteen per million output tokens, a single scenario is "
-            "well under one US cent in practice. It is a small amount, but it "
-            "is not zero, so it is worth setting a spending limit in the "
-            "console if you plan to run many.")
+            "What it costs. A single what-if makes two calls to Claude Sonnet, "
+            "one to read your request and one to explain the result; a "
+            "three-case run makes one call, to explain the result. At the "
+            "rates set in this app, three US dollars per million input tokens "
+            "and fifteen per million output tokens, the worked single what-if "
+            "(1,926 input and 348 output tokens) costs about 1.1 US cents, and "
+            "the worked three-case run (327 input and 402 output tokens) about "
+            "0.7 US cents. It is a small amount, but it is not zero, so it is "
+            "worth setting a spending limit in the console if you plan to run "
+            "many.")
         st.write(
             "For a complete guide to running the tool on your own figures, "
             "including the data file layout and common pitfalls, see "

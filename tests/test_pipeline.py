@@ -6,9 +6,10 @@
 # Run from the project root with (venv) active:
 #   pytest tests/test_pipeline.py -v
 #
-# Twelve test classes covering both paths:
+# Test classes covering both paths, the web pages and their helpers. The
+# first twelve are the core:
 #    1. Base model loading
-#    2. validate_change, the four operations
+#    2. validate_change, the seven operations
 #    3. validate_change, the rejections
 #    4. classify_request aggregation
 #    5. echo_back
@@ -145,7 +146,7 @@ class TestBaseModel:
 
 
 # =============================================================================
-# CLASS 2: validate_change, the four operations
+# CLASS 2: validate_change, the seven operations
 # =============================================================================
 
 class TestValidOperations:

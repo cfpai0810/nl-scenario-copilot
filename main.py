@@ -20,7 +20,7 @@ from config import (
     LINE_ITEMS, CURRENCY_CODE,
 )
 
-# The reused Project 2 engine and loaders, called UNCHANGED
+# The data loaders, reused from Project 2
 from src.step1_data_loader import (
     load_actuals, load_drivers, detect_boundary,
     load_operational_actuals, load_headcount_schedule, load_customer_targets,

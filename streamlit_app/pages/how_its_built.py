@@ -37,12 +37,14 @@ st.markdown("---")
 st.markdown("#### Why you can trust the numbers")
 
 st.write(
-    "The tool never lets the language model do arithmetic. That is the whole "
-    "idea. A large language model is good at reading a sentence and turning it "
-    "into structure, and good at describing a result in plain words. It is not "
-    "a calculator, and it is not asked to be one. Every figure you see is "
-    "computed by deterministic Python code, the same way a spreadsheet would, "
-    "and the same inputs always produce the same output.")
+    "Python produces every reported figure, and the language model writes the "
+    "wording around it. That is the whole idea. A large language model is "
+    "good at reading a sentence and turning it into structure, and good at "
+    "describing a result in plain words. It is not a calculator, and it is not "
+    "asked to be one. Every figure in the tables and charts is computed by "
+    "deterministic Python code, the same way a spreadsheet would, and the same "
+    "inputs always produce the same output. This version does not check the "
+    "numbers in the model's wording, so read the table for figures.")
 
 st.markdown("**The work happens in separated layers, and you open and close "
             "every one.**")
@@ -54,13 +56,19 @@ st.write(
     "ambiguous in a way that would change the answer, the tool asks you to "
     "rephrase rather than guessing.")
 
-st.markdown("**Every run leaves a record.**")
+st.markdown("**What the audit keeps.**")
 st.write(
-    "Whether a request was run, refused, flagged as ambiguous, or cancelled, it "
-    "is written to the audit record, along with a fingerprint of the exact "
-    "input data used. The point is that a scenario is reproducible and "
-    "reviewable after the fact, which is what a finance function needs before it "
-    "will rely on any tool, assisted by AI or not.")
+    "In the command-line version, a single what-if that was run, refused, "
+    "flagged as ambiguous, or cancelled is written to the audit log, along "
+    "with the model used, the parsed scenario and a fingerprint of the exact "
+    "input data; a finished three-case run is written with its cases, the "
+    "model and the same fingerprint. That makes a scenario reproducible and "
+    "reviewable after the fact, which is what a finance function needs before "
+    "it will rely on any tool, assisted by AI or not. This web demo keeps a "
+    "shorter list, for your session only: each finished run and each refused "
+    "or ambiguous what-if, with its status and token count. It has no input "
+    "fingerprint, no model id and no parsed values, and a what-if you cancel "
+    "with Rephrase before it runs is not recorded.")
 
 st.info(
     "In one line: the model reads your request and writes the explanation; "

@@ -7,9 +7,11 @@ explained with its assumptions stated.
 
 **Live demo:** [nl-scenario-copilot.streamlit.app](https://nl-scenario-copilot.streamlit.app)
 
-This project reuses the forecast engine from
-[driver-based-rolling-forecast](https://github.com/cfpai0810/driver-based-rolling-forecast)
-unchanged, and wraps a natural-language front end and back end around it.
+This project builds on the forecast engine from
+[driver-based-rolling-forecast](https://github.com/cfpai0810/driver-based-rolling-forecast),
+extended here with per-month period and value overrides, a row type for
+actuals or forecast, and a currency code, and wraps a natural-language front
+end and back end around it.
 
 ---
 
@@ -28,8 +30,9 @@ from your own historical volatility, set from a standard band, or entered by
 hand. The result is a full profit and loss across all three cases beside the
 base.
 
-In both paths the AI reads the request and writes the commentary. Every
-number is computed in Python.
+In the single what-if the AI reads the request and writes the commentary. In
+the three-case analysis you pick the drivers yourself, and the AI only writes
+the commentary. Every number is computed in Python.
 
 The data in this repository is illustrative sample data for a fictional entity.
 
@@ -37,20 +40,21 @@ The data in this repository is illustrative sample data for a fictional entity.
 
 ## The design rule
 
-The language model never does arithmetic.
+Python produces every reported figure. The language model writes the wording
+around it. This version does not check the numbers in that wording, so read
+the table for figures.
 
-It extracts structure and numbers from the request, and it narrates the result
-once the numbers exist. Everything in between is deterministic Python: the
-validation, the model changes, the forecast, the deltas. This matters because
-language models are reliable at language and unreliable at multi-step
-calculation, so the trust boundary is drawn exactly where the reliability
-boundary is.
+The model extracts structure and numbers from the request, and it narrates
+the result once the numbers exist. Everything in between is deterministic
+Python: the validation, the model changes, the forecast, the deltas. This
+matters because language models are reliable at language and unreliable at
+multi-step calculation, so the trust boundary is drawn exactly where the
+reliability boundary is.
 
 The model's output is treated as untrusted throughout. A parsed change has to
 clear a validation gate before anything runs, which catches the failure modes
-that matter in practice: a percentage arriving as 20 instead of 0.20, a sign
-that contradicts the verb, a value outside a sane range, an operation that
-makes no sense for that driver.
+that matter in practice: a percentage arriving as 20 instead of 0.20, a value
+outside a sane range, an operation that makes no sense for that driver.
 
 ---
 
@@ -95,7 +99,7 @@ did not run is still worth a trace.
 
 ---
 
-## The four operations
+## The seven operations
 
 A scenario can only do things the model actually supports. The schema defines
 that space, and the validator enforces it.
@@ -104,7 +108,10 @@ that space, and the validator enforces it.
 |-----------|--------------|-----------|
 | `scale_driver` | Multiply a driver value by a factor | Revenue, COGS, IT Infrastructure, R&D Expense |
 | `set_driver` | Replace a driver value outright | Revenue, COGS, IT Infrastructure, R&D Expense |
+| `shift_driver` | Add or subtract a fixed amount to a driver value | Revenue, COGS, IT Infrastructure, R&D Expense |
 | `scale_schedule` | Scale a schedule quantity | Personnel Cost, Marketing Spend |
+| `set_schedule` | Replace every schedule entry with one value per period | Personnel Cost, Marketing Spend |
+| `add_schedule` | Add a fixed quantity to each schedule period | Personnel Cost, Marketing Spend |
 | `shift_schedule` | Move a schedule later or earlier by whole months | Personnel Cost, Marketing Spend |
 
 A request that asks for something outside this space is refused with an
@@ -201,8 +208,8 @@ review.py                        Sign-off that requires reading the assumptions
 requirements.txt
 
 src/
-  step1_data_loader.py           Reused unchanged from Project 2
-  step2_forecast_engine.py       Reused unchanged from Project 2
+  step1_data_loader.py           Reused from Project 2
+  step2_forecast_engine.py       Project 2's engine, extended for scenarios
   step3_scenario_parser.py       Plain English to structured scenario
   step4_validator.py             The deterministic gate. No AI.
   step5_scenario_engine.py       Apply changes, rerun, compute deltas
@@ -214,14 +221,17 @@ data/                            Five input files, reused from Project 2
 docs/                            Flow blueprint and sample outputs
 output/                          Generated files (gitignored)
 tests/
-  test_pipeline.py               85 assertions across 12 test classes
+  test_pipeline.py               266 tests
 ```
 
 ---
 
 ## Reusing the forecast engine
 
-The engine is called through its DataFrame interface and never modified:
+The engine is called through its DataFrame interface. It is Project 2's
+engine, extended here with optional per-month period and value overrides, a
+row type so one profit and loss builder serves both actuals and forecast, and
+a currency code:
 
 ```python
 calculate_forecast(actuals_df, drivers_df, operational_df,
@@ -249,13 +259,13 @@ confirmation.
 
 ## Test suite
 
-85 assertions across 12 test classes, no real API calls:
+266 tests, no real API calls:
 
 ```bash
 pytest tests/test_pipeline.py -v
 ```
 
-The classes cover base model loading, all four operations and their
+The classes cover base model loading, all seven operations and their
 rejections, the classification logic, the echo back, the direction of the
 case labelling, the spread modes and narrow detection, historical rate
 extraction, the scenario engine including the deep copy isolation, the
@@ -278,8 +288,9 @@ are wide enough to produce a visible change.
 
 ## Tech stack
 
-Python 3.11 · pandas · Anthropic Claude API · python-dotenv · reportlab ·
-hashlib · pytest
+Python, tested on Python 3.13 and 3.14 (numpy 2.5 needs Python 3.12 or
+later) · pandas · Streamlit · matplotlib · Anthropic Claude API ·
+python-dotenv · reportlab · hashlib · pytest
 
 ---
 
