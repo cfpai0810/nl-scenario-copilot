@@ -1,0 +1,7 @@
+# Running the tests (python -m pytest tests); includes everything needed to run
+-r requirements.txt
+colorama==0.4.6
+iniconfig==2.3.0
+pluggy==1.6.0
+Pygments==2.20.0
+pytest==9.1.1
