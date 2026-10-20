@@ -8,13 +8,19 @@
 # audit". The PERSISTENT audit log remains a feature of the downloaded
 # local version.
 #
-# It reuses the SAME record shape the CLI's write_audit produces, so the
-# governance story is identical; only the write target changes (session state,
-# not a file).
+# A web record is smaller than the CLI's (write_audit): the request, the
+# interpretation, a status, the deltas, what was held constant and the
+# tokens. It has no input fingerprint, no model id and no parsed values, and
+# a finished run stays a draft for review: the web has no sign-off step (the
+# CLI's is review.py).
 # =============================================================================
 
 import streamlit as st
 from datetime import datetime, timezone
+
+# The status of a finished web run. Nobody approves anything on the web, so
+# the web never records "approved" or "locked".
+DRAFT = "draft"
 
 
 def _ensure_store():
@@ -26,9 +32,8 @@ def record_run(raw_request, interpretation, status,
                revenue_delta=None, ebit_delta=None, held_constant=None,
                analysis_type=None, extra=None,
                tokens_in=None, tokens_out=None, cost_estimate=None):
-    """Append one run to this session's audit trail. status is one of
-    draft / approved / locked / refused / caution. Mirrors the CLI record
-    shape, minus the file hashing and disk write."""
+    """Append one run to this session's audit trail. status is DRAFT for a
+    finished run, or refused or caution for a request that did not run."""
     _ensure_store()
     run = {
         "run_id":        datetime.now(timezone.utc).isoformat(),

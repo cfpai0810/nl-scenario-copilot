@@ -3,7 +3,8 @@
 # =============================================================================
 # The exact palette the PDFs already use (step6_explainer), so the web app and
 # the report it produces read as a single product. Governance status colours
-# do real work here as badges: green approved, amber caution, red refused.
+# do real work here as badges: blue draft for review, amber caution, red
+# refused.
 #
 # Typography: Source Serif 4 for headings (institutional authority) and Inter
 # for body, UI, and data (screen-first, with tabular figures so numbers align
@@ -31,6 +32,10 @@ BADGE = {
     "refused":  ("#F7E4E4",  FLAG_RED),
     "caution":  (AMBER_BG,   AMBER),
 }
+
+# A badge's words, where they differ from the status name. A finished web run
+# is a draft waiting for a person's review: nobody approves anything here.
+BADGE_LABEL = {"draft": "Draft for review"}
 
 # Font families (referenced in CSS and available to the SVG diagram)
 SERIF = "'Source Serif 4', Georgia, 'Times New Roman', serif"
@@ -149,6 +154,6 @@ def badge_html(status):
     """Return an HTML status badge for one of the governance states."""
     status = status.lower()
     bg, fg = BADGE.get(status, BADGE["draft"])
-    label = status.upper()
+    label = BADGE_LABEL.get(status, status).upper()
     return (f'<span class="sc-badge" style="background:{bg};color:{fg};">'
             f'{label}</span>')

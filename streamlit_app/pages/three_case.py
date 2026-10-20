@@ -321,7 +321,7 @@ with tab_live:
                             "Three-case: " + ", ".join(line_items),
                             "Flexed {} across three cases".format(
                                 ", ".join(line_items)),
-                            "approved",
+                            audit.DRAFT,
                             ebit_delta=(ebit["Optimistic_delta"]
                                         if ebit else None),
                             analysis_type="three-case",
@@ -350,7 +350,7 @@ with tab_live:
     if st.session_state.tc_phase == "result" and st.session_state.tc_result:
         res = st.session_state.tc_result
         st.markdown("---")
-        st.markdown(badge_html("approved"), unsafe_allow_html=True)
+        st.markdown(badge_html(audit.DRAFT), unsafe_allow_html=True)
 
         ebit = res["ebit"]
         if ebit:

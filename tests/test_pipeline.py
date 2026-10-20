@@ -3006,3 +3006,86 @@ class TestUx4TabularFigures:
         for wanted in ("table", "table *", '[data-testid="stMetricValue"]',
                        '[data-testid="stMetricDelta"]'):
             assert wanted in selectors
+
+
+# =============================================================================
+# Step 3, fixes: a finished web run is a draft for review
+# =============================================================================
+
+def _replying_anthropic():
+    """A stand-in for anthropic.Anthropic that answers every model call with a
+    canned reply: one scenario for the parse call, a short text otherwise.
+    Nothing is sent."""
+    from types import SimpleNamespace
+
+    def reply(text):
+        return SimpleNamespace(
+            content=[SimpleNamespace(text=text)], stop_reason="end_turn",
+            usage=SimpleNamespace(input_tokens=100, output_tokens=50))
+
+    class StandIn:
+        def __init__(self, api_key=None, **kwargs):
+            self.messages = self
+
+        def create(self, **kwargs):
+            if "structured scenario" in kwargs.get("system", ""):
+                return reply(
+                    '```json\n{"changes": [{"target": "Marketing Spend", '
+                    '"operation": "scale_schedule", "value": 0.8, '
+                    '"periods": "all"}], "ambiguity_note": "", '
+                    '"confidence": "high"}\n```')
+            return reply("A stand-in explanation.")
+    return StandIn
+
+
+class TestItem31DraftForReview:
+    """Nobody approves anything on the web, so the worked example and every
+    finished web run read "Draft for review", never "Approved" (item 31)."""
+
+    @staticmethod
+    def _badges(at):
+        return [m.value for m in at.markdown
+                if '<span class="sc-badge"' in m.value]
+
+    def test_item31_web_runs_are_drafts_for_review(self, monkeypatch):
+        from streamlit.testing.v1 import AppTest
+        monkeypatch.setattr(anthropic, "Anthropic", _replying_anthropic())
+
+        # Single what-if: the worked example, then a finished live run.
+        at = AppTest.from_file(str(APP_DIR / "pages" / "single_what_if.py"),
+                               default_timeout=60).run()
+        assert [">DRAFT FOR REVIEW<" in b for b in self._badges(at)] == [True]
+        at.text_input(key="byo_api_key").input(STAND_IN_KEY).run()
+        next(t for t in at.text_input if t.label == "Your what-if").input(
+            "Cut marketing spend by 20 percent")
+        next(b for b in at.button if b.label == "Interpret this").click().run()
+        next(b for b in at.button if b.label == "Confirm and run").click().run()
+        assert not at.exception and not at.error
+        assert at.session_state["phase"] == "result"
+        assert [r["status"] for r in at.session_state["audit_runs"]] == ["draft"]
+        badges = self._badges(at)
+        assert len(badges) == 3   # the example, the result, the audit list
+        assert all(">DRAFT FOR REVIEW<" in b for b in badges)
+
+        # Three-case: a finished live run.
+        at = AppTest.from_file(str(APP_DIR / "pages" / "three_case.py"),
+                               default_timeout=60).run()
+        at.text_input(key="byo_api_key").input(STAND_IN_KEY).run()
+        at.multiselect[0].set_value(["COGS margin"]).run()
+        next(b for b in at.button if b.label == "Derive cases").click().run()
+        next(b for b in at.button if b.label == "Confirm and run").click().run()
+        assert not at.exception and not at.error
+        assert at.session_state["tc_phase"] == "result"
+        assert [r["status"] for r in at.session_state["audit_runs"]] == ["draft"]
+        badges = self._badges(at)
+        assert len(badges) == 2   # the result, the audit list
+        assert all(">DRAFT FOR REVIEW<" in b for b in badges)
+
+        # No web page sets the approved status any more.
+        for page in ("single_what_if.py", "three_case.py"):
+            source = (APP_DIR / "pages" / page).read_text(encoding="utf-8")
+            assert '"approved"' not in source
+        from streamlit_app.lib import audit
+        from streamlit_app.lib.theme import badge_html
+        assert audit.DRAFT == "draft"
+        assert ">DRAFT FOR REVIEW</span>" in badge_html(audit.DRAFT)

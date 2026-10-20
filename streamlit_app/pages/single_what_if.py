@@ -100,7 +100,7 @@ with tab_example:
     st.markdown(f"**Request:** {EXAMPLE['request']}")
     st.markdown(
         f'**The model understood:** {EXAMPLE["echo"]} '
-        + badge_html("approved"), unsafe_allow_html=True)
+        + badge_html(audit.DRAFT), unsafe_allow_html=True)
 
     e = EXAMPLE["ebit"]
     c1, c2, c3 = st.columns(3)
@@ -439,7 +439,7 @@ with tab_live:
                             ebit = headline.get("EBIT")
                             cost_est = estimate_cost(total_in, total_out)
                             audit.record_run(
-                                p["request"], echo, "approved",
+                                p["request"], echo, audit.DRAFT,
                                 revenue_delta=(rev["delta"]
                                                if rev else None),
                                 ebit_delta=(ebit["delta"]
@@ -474,7 +474,7 @@ with tab_live:
     if st.session_state.phase == "result" and st.session_state.result:
         res = st.session_state.result
         st.markdown("---")
-        st.markdown(badge_html("approved"), unsafe_allow_html=True)
+        st.markdown(badge_html(audit.DRAFT), unsafe_allow_html=True)
 
         ebit_row = next((d for d in res["deltas"]
                          if d["line"] == EBIT_LABEL), None)
