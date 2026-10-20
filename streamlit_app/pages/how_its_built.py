@@ -72,7 +72,7 @@ st.write(
 
 st.info(
     "In one line: the model reads your request and writes the explanation; "
-    "Python calculates every figure; you approve the result. "
+    "Python calculates every figure; you review the result. "
     "The intelligence is at the edges, and the numbers in the middle are "
     "deterministic and checkable.")
 
@@ -116,9 +116,9 @@ st.write(
     "from computing anything, and the explainer, which is given already-computed "
     "figures and asked only to describe them. Everything numeric, the forecast, "
     "the validation, the deltas, the spreads, the three cases, is deterministic "
-    "Python. This is what makes the output reproducible and testable. It also "
-    "means the model's known weakness, arithmetic, is never on the critical "
-    "path.")
+    "Python. This is what makes the output reproducible and testable. The "
+    "model is not asked to calculate: Python produces every figure in the "
+    "table.")
 
 st.markdown("**Reconciliation by construction.**")
 st.write(

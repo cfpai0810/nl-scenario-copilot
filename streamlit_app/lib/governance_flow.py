@@ -60,7 +60,7 @@ def governance_flow_svg():
              "The model writes up", "figures it was given", "words, not numbers", MODEL) +
         _arrow(754) +
         _box(782, 124, PERSON, PERSON_BG, "YOU SIGN OFF",
-             "You review and", "approve the result", "the person", PERSON)
+             "You review", "the result", "the person", PERSON)
     )
 
     return f"""
