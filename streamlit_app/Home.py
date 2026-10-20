@@ -37,6 +37,11 @@ def _home_page():
         unsafe_allow_html=True,
     )
 
+    # ── The worked example, one click from the banner (no key needed) ────────
+    if st.button("See the worked example"):
+        st.session_state[OPEN_EXAMPLE_TAB] = True
+        st.switch_page(SINGLE_WHAT_IF)
+
     # ── The governance flow (the thesis, shown once as a diagram) ────────────
     import streamlit.components.v1 as components
     components.html(governance_flow_svg(), height=220, scrolling=False)
@@ -147,12 +152,17 @@ st.set_page_config(
 
 PAGES_DIR = Path(__file__).resolve().parent / "pages"
 
+# The worked example lives on the Single what-if page, as its second tab. The
+# Home button sets this flag so that page opens on the example tab.
+SINGLE_WHAT_IF = st.Page(str(PAGES_DIR / "single_what_if.py"),
+                         title="Single what-if", icon=":material/tune:")
+OPEN_EXAMPLE_TAB = "swi_open_example"
+
 pg = st.navigation([
     st.Page(_home_page, title="Home", icon=":material/home:"),
     st.Page(str(PAGES_DIR / "how_the_model_works.py"),
             title="How the model works", icon=":material/menu_book:"),
-    st.Page(str(PAGES_DIR / "single_what_if.py"),
-            title="Single what-if", icon=":material/tune:"),
+    SINGLE_WHAT_IF,
     st.Page(str(PAGES_DIR / "three_case.py"),
             title="Three-case", icon=":material/analytics:"),
     st.Page(str(PAGES_DIR / "your_own_data.py"),

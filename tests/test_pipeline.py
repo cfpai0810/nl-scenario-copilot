@@ -2891,3 +2891,118 @@ class TestItem53SidebarOnArrival:
         source = (APP_DIR / "Home.py").read_text(encoding="utf-8")
         assert 'initial_sidebar_state="auto"' in source
         assert 'initial_sidebar_state="expanded"' not in source
+
+
+# =============================================================================
+# Step 2, bundle 3: the key gate expander, the Home button, tabular figures
+# =============================================================================
+GATE_LABEL = "Run it live with your own key (optional)"
+
+
+def _blocks_of_type(node, block_type):
+    """Every block of one type under an AppTest node, in page order."""
+    found = []
+    for child in getattr(node, "children", {}).values():
+        if getattr(child, "type", None) == block_type:
+            found.append(child)
+        found.extend(_blocks_of_type(child, block_type))
+    return found
+
+
+class TestUx1KeyGateExpander:
+    """The whole key gate sits in one closed expander, with a live-mode
+    status line below it (UX1)."""
+
+    def test_ux1_gate_is_inside_a_closed_expander(self, monkeypatch):
+        from streamlit.testing.v1 import AppTest
+        monkeypatch.setattr(anthropic, "Anthropic", _stand_in_anthropic())
+        at = AppTest.from_file(str(APP_DIR / "Home.py"),
+                               default_timeout=60).run()
+        gates = at.sidebar.expander
+        assert [g.label for g in gates] == [GATE_LABEL]
+        assert gates[0].proto.expanded is False
+        assert [t.key for t in gates[0].text_input] == ["byo_api_key"]
+        inside = " ".join(c.value for c in gates[0].caption)
+        assert "bills your Anthropic account" in inside
+        assert "never stored or logged" in " ".join(
+            m.value for m in gates[0].markdown)
+        assert not any("Run it yourself" in m.value for m in at.sidebar.markdown)
+        assert at.sidebar.caption[-1].value == \
+            "Live mode is off. The worked examples need no key."
+
+        gates[0].text_input(key="byo_api_key").input(STAND_IN_KEY).run()
+        gates = at.sidebar.expander
+        assert [g.label for g in gates] == [GATE_LABEL]
+        assert [s.value for s in gates[0].success] == [KEY_LOOKS_COMPLETE]
+        assert at.sidebar.caption[-1].value == "Live mode is on for this session."
+
+    def test_ux1_warning_stays_inside_the_expander(self, monkeypatch):
+        from streamlit.testing.v1 import AppTest
+        monkeypatch.setattr(anthropic, "Anthropic", _stand_in_anthropic())
+        at = AppTest.from_file(str(APP_DIR / "Home.py"),
+                               default_timeout=60).run()
+        at.text_input(key="byo_api_key").input("sk-ant-short").run()
+        gate = at.sidebar.expander[0]
+        assert len(gate.warning) == 1
+        assert at.sidebar.caption[-1].value == \
+            "Live mode is off. The worked examples need no key."
+
+
+class TestUx2WorkedExampleButton:
+    """Home's button under the banner opens the worked example (UX2)."""
+
+    def test_ux2_button_switches_to_single_what_if_example_tab(self, monkeypatch):
+        from streamlit.testing.v1 import AppTest
+        monkeypatch.setattr(anthropic, "Anthropic", _stand_in_anthropic())
+        at = AppTest.from_file(str(APP_DIR / "Home.py"),
+                               default_timeout=60).run()
+        # The button comes straight after the banner, before anything else.
+        kids = list(at.main.children.values())
+        banner = next(i for i, k in enumerate(kids) if getattr(k, "type", "") ==
+                      "markdown" and k.value.startswith('<div class="sc-header">'))
+        assert getattr(kids[banner + 1], "label", None) == "See the worked example"
+
+        at.main.button[0].click().run()
+        assert not at.exception
+        assert any(m.value == "### Single what-if" for m in at.markdown)
+        tab_sets = _blocks_of_type(at.main, "tab_container")
+        assert len(tab_sets) == 1
+        assert [t.label for t in at.tabs] == \
+            ["Run it yourself", "View a worked example"]
+        assert tab_sets[0].proto.tab_container.default_tab_index == 1
+        assert any(m.label == "Change" for m in at.metric)
+        assert at.session_state["live_client"] is None
+
+    def test_ux2_sidebar_link_still_opens_the_first_tab(self):
+        from streamlit.testing.v1 import AppTest
+        at = AppTest.from_file(str(APP_DIR / "pages" / "single_what_if.py"),
+                               default_timeout=60).run()
+        tab_sets = _blocks_of_type(at.main, "tab_container")
+        assert tab_sets[0].proto.tab_container.default_tab_index == 0
+
+
+class TestUx4TabularFigures:
+    """Tabular figures only on numeric elements, so a hyphen in text keeps
+    its own width (UX4)."""
+
+    @staticmethod
+    def _rules():
+        import re
+        from streamlit_app.lib.theme import inject_css
+        css = re.sub(r"/\*.*?\*/", "", inject_css(), flags=re.S)
+        return [(sel.split(";")[-1].strip(), body) for sel, body in
+                re.findall(r"([^{}]+)\{([^{}]*)\}", css)]
+
+    def test_ux4_global_rule_has_no_tabular_figures(self):
+        global_rule = next(body for sel, body in self._rules()
+                           if sel.startswith("html, body"))
+        assert '"cv05" 1' in global_rule
+        assert "tnum" not in global_rule
+
+    def test_ux4_numeric_rule_lists_tables_and_metrics(self):
+        numeric = [(sel, body) for sel, body in self._rules() if "tnum" in body]
+        assert len(numeric) == 1
+        selectors = [s.strip() for s in numeric[0][0].split(",")]
+        for wanted in ("table", "table *", '[data-testid="stMetricValue"]',
+                       '[data-testid="stMetricDelta"]'):
+            assert wanted in selectors
