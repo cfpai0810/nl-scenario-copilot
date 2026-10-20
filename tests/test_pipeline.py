@@ -2772,3 +2772,122 @@ class TestItem2And4KeyGate:
         assert [s.value for s in at.sidebar.success] == [KEY_LOOKS_COMPLETE]
         assert not any("Paste your Anthropic API key" in i.value
                        for i in at.info)
+
+
+# =============================================================================
+# Step 2, bundle 2: signed figures, PDF text and the sidebar on arrival
+# =============================================================================
+from src.step6_explainer import pdf_safe, signed_money, delta_color_for, clean_markdown
+
+
+def _metric_arrow_and_colour(metric):
+    """The arrow and colour st.metric draws for one rendered metric."""
+    from streamlit.proto.Metric_pb2 import Metric as MetricProto
+    return (MetricProto.MetricDirection.Name(metric.proto.direction),
+            MetricProto.MetricColor.Name(metric.proto.color))
+
+
+def _signed_metric_app(line, change):
+    import streamlit as st
+    from src.step6_explainer import signed_money, delta_color_for
+    st.metric(line, "x", delta=signed_money(change),
+              delta_color=delta_color_for(line))
+
+
+class TestItem7SignedFigures:
+    """A loss reads as a loss: the sign before the symbol, the arrow and the
+    colour from the signed value and the line's polarity (items 7 and 58)."""
+
+    def test_item7_sign_goes_before_the_symbol(self):
+        assert signed_money(-30153) == "-€30,153"
+        assert signed_money(76800) == "+€76,800"
+        assert signed_money(0) == "€0"
+        assert signed_money(-0.4) == "€0"
+
+    def test_item7_polarity_of_each_line(self):
+        assert delta_color_for("Revenue") == "normal"
+        assert delta_color_for(EBIT_LABEL) == "normal"
+        assert delta_color_for("Gross Profit") == "normal"
+        for cost in ("COGS", "Personnel Cost", "Marketing Spend",
+                     "IT Infrastructure", "R&D Expense", "Total OpEx"):
+            assert delta_color_for(cost) == "inverse"
+
+    @pytest.mark.parametrize("line,change,expected", [
+        ("Revenue", 1000, ("UP", "GREEN")),
+        ("Revenue", -1000, ("DOWN", "RED")),
+        ("COGS", 1000, ("UP", "RED")),
+        ("COGS", -1000, ("DOWN", "GREEN")),
+        (EBIT_LABEL, -30153, ("DOWN", "RED")),
+    ])
+    def test_item58_metric_arrow_and_colour(self, line, change, expected):
+        from streamlit.testing.v1 import AppTest
+        at = AppTest.from_function(_signed_metric_app, args=(line, change)).run()
+        assert _metric_arrow_and_colour(at.metric[0]) == expected
+
+    def test_item58_three_case_example_loss_is_a_red_down_arrow(self):
+        from streamlit.testing.v1 import AppTest
+        at = AppTest.from_file(str(APP_DIR / "pages" / "three_case.py"),
+                               default_timeout=60).run()
+        metrics = {m.label: m for m in at.metric}
+        pessimistic, optimistic = metrics["Pessimistic"], metrics["Optimistic"]
+        assert pessimistic.delta == "-€30,153"
+        assert _metric_arrow_and_colour(pessimistic) == ("DOWN", "RED")
+        assert optimistic.delta == "+€30,217"
+        assert _metric_arrow_and_colour(optimistic) == ("UP", "GREEN")
+
+    def test_item7_single_what_if_example_change_reads_signed(self):
+        from streamlit.testing.v1 import AppTest
+        at = AppTest.from_file(str(APP_DIR / "pages" / "single_what_if.py"),
+                               default_timeout=60).run()
+        change = next(m for m in at.metric if m.label == "Change")
+        assert change.value == "+€76,800"
+        assert _metric_arrow_and_colour(change) == ("UP", "GREEN")
+
+
+HOSTILE_MODEL_TEXT = ("**Stand-in.** Profit & loss moves when COGS <target is "
+                      "missed and IT <b falls.\n\nA second & < paragraph.")
+
+
+class TestItem35PdfText:
+    """Model, data and reviewer text never breaks the PDF (items 35 and 28)."""
+
+    def test_item35_helper_escapes_ampersand_first(self):
+        assert pdf_safe("R&D <b> & x < y > z") == \
+            "R&amp;D &lt;b&gt; &amp; x &lt; y &gt; z"
+        assert pdf_safe("&lt;") == "&amp;lt;"
+        assert clean_markdown("**Bold** & <b") == "<b>Bold</b> &amp; &lt;b"
+
+    def test_item35_single_what_if_pdf_builds_with_angle_brackets(self):
+        from streamlit_app.lib.web_emit import scenario_pdf_bytes
+        deltas = [{"line": "IT Infrastructure", "base": 270000,
+                   "scenario": 243000, "delta": -27000, "pct": -0.1},
+                  {"line": EBIT_LABEL, "base": 542191, "scenario": 569191,
+                   "delta": 27000, "pct": 0.05}]
+        pdf = scenario_pdf_bytes(
+            "Keep COGS <target and cut IT", "You want <b IT & less", deltas,
+            "sensitivity", ["R&D <b is held constant."], HOSTILE_MODEL_TEXT,
+            [{"line": "IT Infrastructure", "base": "EUR <b", "scenario": "x < y"}],
+            ["EBIT <b rises & more."])
+        assert pdf[:5] == b"%PDF-"
+
+    def test_item28_three_case_pdf_builds_with_angle_brackets(self):
+        from streamlit_app.lib.web_emit import three_case_pdf_bytes
+        spreads = {"COGS": {"pessimistic": 0.45, "realistic": 0.42,
+                            "optimistic": 0.39, "basis": "history <b & more",
+                            "mode": "data-derived", "narrow": False}}
+        delta_rows = [{"line": EBIT_LABEL, "base": 500,
+                       "Pessimistic": 400, "Realistic": 500, "Optimistic": 600,
+                       "Pessimistic_delta": -100, "Realistic_delta": 0,
+                       "Optimistic_delta": 100}]
+        pdf = three_case_pdf_bytes(spreads, delta_rows, HOSTILE_MODEL_TEXT,
+                                   ["Downside <b & upside."], "basis <b & <")
+        assert pdf[:5] == b"%PDF-"
+
+
+class TestItem53SidebarOnArrival:
+    """The sidebar opens on a wide screen and stays closed on a phone (item 53)."""
+
+    def test_item53_initial_sidebar_state_is_auto(self):
+        source = (APP_DIR / "Home.py").read_text(encoding="utf-8")
+        assert 'initial_sidebar_state="auto"' in source
+        assert 'initial_sidebar_state="expanded"' not in source

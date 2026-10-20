@@ -142,7 +142,7 @@ st.set_page_config(
     page_title="Scenario Modelling Copilot",
     page_icon="•",
     layout="centered",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
 )
 
 PAGES_DIR = Path(__file__).resolve().parent / "pages"

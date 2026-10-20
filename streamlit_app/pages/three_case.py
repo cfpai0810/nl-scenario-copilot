@@ -34,7 +34,7 @@ from config import (
     LINE_ITEMS, DRIVER_DIRECTION, SCHEDULE_DRIVER_TYPES,
     PRESET_BANDS, EBIT_LABEL, CURRENCY_SYMBOL,
 )
-from src.step6_explainer import format_case_value
+from src.step6_explainer import format_case_value, signed_money, delta_color_for
 from src.step7_scenario_spread import derive_spread, preset_spread, history_rates_for
 from src.step8_three_case import (
     run_three_case, multi_case_deltas, case_ebit_summary, spread_base_for,
@@ -109,10 +109,12 @@ with tab_example:
     e = ex["ebit"]
     c1, c2, c3 = st.columns(3)
     c1.metric("Pessimistic", "{}{:,.0f}".format(CURRENCY_SYMBOL, e["pessimistic"]["value"]),
-              delta="{}{:+,.0f}".format(CURRENCY_SYMBOL, e["pessimistic"]["delta"]))
+              delta=signed_money(e["pessimistic"]["delta"]),
+              delta_color=delta_color_for(EBIT_LABEL))
     c2.metric("Realistic (base)", "{}{:,.0f}".format(CURRENCY_SYMBOL, e["realistic"]["value"]))
     c3.metric("Optimistic", "{}{:,.0f}".format(CURRENCY_SYMBOL, e["optimistic"]["value"]),
-              delta="{}{:+,.0f}".format(CURRENCY_SYMBOL, e["optimistic"]["delta"]))
+              delta=signed_money(e["optimistic"]["delta"]),
+              delta_color=delta_color_for(EBIT_LABEL))
 
     if ex.get("case_monthly"):
         _fig = build_three_case_chart(ex["case_monthly"])
@@ -355,12 +357,14 @@ with tab_live:
             c1, c2, c3 = st.columns(3)
             c1.metric("Pessimistic",
                       "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit["Pessimistic"]),
-                      delta="{}{:+,.0f}".format(CURRENCY_SYMBOL, ebit["Pessimistic_delta"]))
+                      delta=signed_money(ebit["Pessimistic_delta"]),
+                      delta_color=delta_color_for(EBIT_LABEL))
             c2.metric("Realistic (base)",
                       "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit["Realistic"]))
             c3.metric("Optimistic",
                       "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit["Optimistic"]),
-                      delta="{}{:+,.0f}".format(CURRENCY_SYMBOL, ebit["Optimistic_delta"]))
+                      delta=signed_money(ebit["Optimistic_delta"]),
+                      delta_color=delta_color_for(EBIT_LABEL))
 
         if res.get("case_monthly"):
             _fig = build_three_case_chart(res["case_monthly"])
@@ -425,6 +429,6 @@ if runs:
         cols[0].markdown(badge_html(r["status"]), unsafe_allow_html=True)
         cols[1].write(r["raw_request"])
         if r.get("ebit_delta") is not None:
-            cols[2].write("EBIT {}{:+,.0f}".format(CURRENCY_SYMBOL, r["ebit_delta"]))
+            cols[2].write("EBIT {}".format(signed_money(r["ebit_delta"])))
         if r.get("tokens_in") is not None:
             st.caption(format_cost(r["tokens_in"], r["tokens_out"]))

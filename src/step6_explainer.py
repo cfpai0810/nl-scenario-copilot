@@ -31,7 +31,7 @@ from config import (
     ANTHROPIC_API_KEY, MODEL, MAX_TOKENS, OUTPUT_DIR, AUDIT_LOG, DEFAULT_ENTITY,
     ACTUALS_FILE, DRIVERS_FILE, OPERATIONAL_FILE, HEADCOUNT_FILE, CUSTOMER_FILE,
     EBIT_LABEL, LINE_ITEMS, SCHEDULE_DRIVER_TYPES,
-    CURRENCY_CODE, CURRENCY_SYMBOL,
+    CURRENCY_CODE, CURRENCY_SYMBOL, COGS_ITEMS, OPEX_ITEMS,
 )
 
 # ── Page geometry and palette (same system as Projects 1 to 3) ────────────────
@@ -66,9 +66,43 @@ S_TBL_NUM = ParagraphStyle("TblNum", fontName="Helvetica", fontSize=8.5,
 SUBTOTAL_LINES = {"Gross Profit", "Total OpEx", EBIT_LABEL}
 
 
+def pdf_safe(text):
+    """Escape text for a reportlab Paragraph: "&" first, then "<" and ">".
+    Every piece of data, model or reviewer text goes through this before it
+    is placed in Paragraph markup, so a stray "<" can never break the PDF."""
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+# Older names for the same helper, kept so their callers read unchanged.
+_esc = pdf_safe
+_esc_text = pdf_safe
+
+
+# Lines where a rise is bad news (every cost line and the cost subtotal). A
+# rise is good news on every other line: revenue and the profit lines.
+COST_LINES = frozenset(COGS_ITEMS + OPEX_ITEMS + ["Total OpEx"])
+
+
+def signed_money(value, symbol=CURRENCY_SYMBOL):
+    """A money change with its sign before the symbol: -€30,153, +€76,800,
+    and €0 for no change. A minus sign first is also what makes st.metric
+    draw a down arrow for a loss."""
+    whole = round(value)
+    if whole == 0:
+        return "{}0".format(symbol)
+    return "{}{}{:,.0f}".format("-" if whole < 0 else "+", symbol, abs(whole))
+
+
+def delta_color_for(line):
+    """The st.metric delta_color for a P&L line: "normal" where a rise is
+    good (revenue and profit), "inverse" where a rise is bad (a cost)."""
+    return "inverse" if line in COST_LINES else "normal"
+
+
 def clean_markdown(text):
-    """Strip markdown artefacts before PDF rendering. Escape & first."""
-    text = text.replace("&", "&amp;")
+    """Strip markdown artefacts before PDF rendering. Escape the text first
+    (see pdf_safe), then turn **bold** into the PDF's own bold markup."""
+    text = pdf_safe(text)
     text = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', text)
     text = re.sub(r'^#{1,3}\s*', '', text, flags=re.MULTILINE)
     return text.strip()
@@ -424,7 +458,7 @@ def _cover_block(entity, request, analysis_type, ts):
             ParagraphStyle("CT", fontName="Helvetica-Bold", fontSize=15,
                 textColor=colors.white, alignment=TA_CENTER))],
         [Paragraph('<font color="#AACCEE">{}  ·  {}  ·  {}</font>'.format(
-                entity, analysis_type.capitalize(), ts[:10]),
+                pdf_safe(entity), pdf_safe(analysis_type.capitalize()), ts[:10]),
             ParagraphStyle("CS", fontName="Helvetica", fontSize=9,
                 textColor=colors.HexColor("#AACCEE"), alignment=TA_CENTER))],
     ]
@@ -466,7 +500,7 @@ def _delta_table(deltas):
     for d in deltas:
         dc = "#A32D2D" if d["delta"] < 0 else ("#1D6B0F" if d["delta"] > 0 else "#898781")
         pct = "" if d["pct"] is None else "{:+.1%}".format(d["pct"])
-        safe = d["line"].replace("&", "&amp;")
+        safe = pdf_safe(d["line"])
         name = "<b>{}</b>".format(safe) if d["line"] in SUBTOTAL_LINES else safe
         rows.append([
             Paragraph(name, S_TBL),
@@ -500,7 +534,7 @@ def _quarterly_table(quarterly):
     hdr = [Paragraph("<b>Line</b>", S_TBL_HDR)]
     for c in cols:
         suffix = {"actual": " (A)", "forecast": " (F)", "fy": ""}[c["kind"]]
-        hdr.append(Paragraph("<b>{}{}</b>".format(c["key"], suffix), S_TBL_HDR))
+        hdr.append(Paragraph("<b>{}{}</b>".format(pdf_safe(c["key"]), suffix), S_TBL_HDR))
     rows = [hdr]
     for ln in quarterly["lines"]:
         name = "<b>{}</b>".format(_esc(ln["line"])) \
@@ -536,7 +570,7 @@ def _monthly_table(monthly, which):
     periods = monthly["periods"]
     hdr = [Paragraph("<b>Line</b>", S_TBL_HDR)]
     for p in periods:
-        hdr.append(Paragraph("<b>{}</b>".format(p), S_TBL_HDR))
+        hdr.append(Paragraph("<b>{}</b>".format(pdf_safe(p)), S_TBL_HDR))
     rows = [hdr]
     for ln in monthly["lines"]:
         name = "<b>{}</b>".format(_esc(ln["line"])) \
@@ -573,7 +607,7 @@ def _monthly_table(monthly, which):
 
 def _held_constant_box(held_constant):
     if held_constant:
-        txt = " ".join(held_constant)
+        txt = pdf_safe(" ".join(held_constant))
     else:
         txt = "No cross-driver assumptions were held constant for this scenario."
     inner = Paragraph(
@@ -591,16 +625,6 @@ def _held_constant_box(held_constant):
         ("LINEBELOW",     (0, 0), (-1, -1), 2, AMBER),
     ]))
     return t
-
-
-def _esc(text):
-    """Escape bare ampersands for ReportLab XML."""
-    return text.replace("&", "&amp;")
-
-
-def _esc_text(text):
-    """Escape ampersands in free text that may contain line names like R&D."""
-    return str(text).replace("&", "&amp;")
 
 
 def _takeaways_box(takeaways):
@@ -694,9 +718,9 @@ def write_pdf(request, echo, deltas, analysis_type, held_constant, explanation, 
         _pct = (" ({:+.1%})".format(ebit_d["pct"])
                 if ebit_d["pct"] is not None else "")
         story.append(Paragraph(
-            '<b>EBIT moves {sym}{:+,.0f}{}, from {sym}{:,.0f} to {sym}{:,.0f} over the '
+            '<b>EBIT moves {}{}, from {sym}{:,.0f} to {sym}{:,.0f} over the '
             'forecast horizon.</b>'.format(
-                ebit_d["delta"], _pct,
+                signed_money(ebit_d["delta"]), _pct,
                 ebit_d["base"], ebit_d["scenario"],
                 sym=CURRENCY_SYMBOL),
             S_BODY))

@@ -24,7 +24,7 @@ from src.step6_explainer import (
     _cover_block, _section_header, _assumptions_table, _delta_table,
     _held_constant_box, _takeaways_box, _monthly_table, _quarterly_table,
     _three_case_story,
-    clean_markdown,
+    clean_markdown, signed_money,
     S_BODY, S_BODY_JUST, S_META, RULE_COLOR,
 )
 from config import MODEL, DEFAULT_ENTITY, EBIT_LABEL, CURRENCY_SYMBOL
@@ -60,9 +60,9 @@ def scenario_pdf_bytes(request, echo, deltas, analysis_type, held_constant,
         _pct = (" ({:+.1%})".format(ebit_d["pct"])
                 if ebit_d["pct"] is not None else "")
         story.append(Paragraph(
-            '<b>EBIT moves {sym}{:+,.0f}{}, from {sym}{:,.0f} to {sym}{:,.0f} over the '
+            '<b>EBIT moves {}{}, from {sym}{:,.0f} to {sym}{:,.0f} over the '
             'forecast horizon.</b>'.format(
-                ebit_d["delta"], _pct,
+                signed_money(ebit_d["delta"]), _pct,
                 ebit_d["base"], ebit_d["scenario"],
                 sym=CURRENCY_SYMBOL),
             S_BODY))
@@ -83,10 +83,10 @@ def scenario_pdf_bytes(request, echo, deltas, analysis_type, held_constant,
                 _fy = quarterly["columns"][-1]["key"]
                 story.append(Paragraph(
                     '<font color="#898781">Full-year EBIT moves from '
-                    '{sym}{:,.0f} to {sym}{:,.0f} ({sym}{:+,.0f}).</font>'.format(
+                    '{sym}{:,.0f} to {sym}{:,.0f} ({}).</font>'.format(
                         _ebit_ln["base"][_fy],
                         _ebit_ln["scenario"][_fy],
-                        _ebit_ln["scenario"][_fy] - _ebit_ln["base"][_fy],
+                        signed_money(_ebit_ln["scenario"][_fy] - _ebit_ln["base"][_fy]),
                         sym=CURRENCY_SYMBOL),
                     S_META))
         story.append(Spacer(1, 0.35 * cm))

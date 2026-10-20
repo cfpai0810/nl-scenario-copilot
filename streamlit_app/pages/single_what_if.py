@@ -38,6 +38,7 @@ from streamlit_app.lib.charts import (
 from streamlit_app.lib.explanation_cards import render_explanation_cards
 
 from config import EBIT_LABEL, CURRENCY_SYMBOL
+from src.step6_explainer import signed_money, delta_color_for
 
 st.markdown(inject_css(), unsafe_allow_html=True)
 
@@ -101,8 +102,9 @@ with tab_example:
     c1, c2, c3 = st.columns(3)
     c1.metric("Base EBIT (forecast)", "{}{:,.0f}".format(CURRENCY_SYMBOL, e["base"]))
     c2.metric("Scenario EBIT (forecast)", "{}{:,.0f}".format(CURRENCY_SYMBOL, e["scenario"]))
-    c3.metric("Change", "{}{:+,.0f}".format(CURRENCY_SYMBOL, e["delta"]),
-              delta="{:+.1%}".format(e["pct"]))
+    c3.metric("Change", signed_money(e["delta"]),
+              delta="{:+.1%}".format(e["pct"]),
+              delta_color=delta_color_for(EBIT_LABEL))
 
     if EXAMPLE.get("chart_quarterly"):
         _cq = EXAMPLE["chart_quarterly"]
@@ -112,11 +114,10 @@ with tab_example:
         if _cq.get("fy_base") is not None:
             st.caption(
                 "Full-year EBIT moves from {}{:,.0f} to {}{:,.0f} "
-                "({}{:+,.0f}).".format(
+                "({}).".format(
                     CURRENCY_SYMBOL, _cq["fy_base"],
                     CURRENCY_SYMBOL, _cq["fy_scenario"],
-                    CURRENCY_SYMBOL,
-                    _cq["fy_scenario"] - _cq["fy_base"]))
+                    signed_money(_cq["fy_scenario"] - _cq["fy_base"])))
 
     st.divider()
 
@@ -125,7 +126,7 @@ with tab_example:
         "Line": d["line"],
         "Base": "{}{:,.0f}".format(CURRENCY_SYMBOL, d["base"]),
         "Scenario": "{}{:,.0f}".format(CURRENCY_SYMBOL, d["scenario"]),
-        "Change": "{}{:+,.0f}".format(CURRENCY_SYMBOL, d["delta"]),
+        "Change": signed_money(d["delta"]),
         "%": "" if d["pct"] is None else "{:+.1%}".format(d["pct"]),
     } for d in EXAMPLE["deltas"]])
     st.dataframe(ex_df, use_container_width=True, hide_index=True)
@@ -480,10 +481,11 @@ with tab_live:
             c2.metric("Scenario EBIT (forecast)",
                       "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit_row["scenario"]))
             c3.metric("Change",
-                      "{}{:+,.0f}".format(CURRENCY_SYMBOL, ebit_row["delta"]),
+                      signed_money(ebit_row["delta"]),
                       delta=("{:+.1%}".format(ebit_row["pct"])
                              if ebit_row["pct"] is not None
-                             else None))
+                             else None),
+                      delta_color=delta_color_for(EBIT_LABEL))
 
         q = res.get("quarterly")
         if q:
@@ -497,11 +499,11 @@ with tab_live:
                 _fy = q["columns"][-1]["key"]
                 st.caption(
                     "Full-year EBIT moves from {}{:,.0f} to {}{:,.0f} "
-                    "({}{:+,.0f}).".format(
+                    "({}).".format(
                         CURRENCY_SYMBOL, _ebit_ln["base"][_fy],
                         CURRENCY_SYMBOL, _ebit_ln["scenario"][_fy],
-                        CURRENCY_SYMBOL,
-                        _ebit_ln["scenario"][_fy] - _ebit_ln["base"][_fy]))
+                        signed_money(
+                            _ebit_ln["scenario"][_fy] - _ebit_ln["base"][_fy])))
 
         st.divider()
 
@@ -519,7 +521,7 @@ with tab_live:
             "Line": d["line"],
             "Base": "{}{:,.0f}".format(CURRENCY_SYMBOL, d["base"]),
             "Scenario": "{}{:,.0f}".format(CURRENCY_SYMBOL, d["scenario"]),
-            "Change": "{}{:+,.0f}".format(CURRENCY_SYMBOL, d["delta"]),
+            "Change": signed_money(d["delta"]),
             "%": "" if d["pct"] is None else "{:+.1%}".format(d["pct"]),
         } for d in show])
         st.dataframe(df, use_container_width=True, hide_index=True)
@@ -553,11 +555,11 @@ with tab_live:
                 fy_scen = ebit_ln["scenario"][fy_key]
                 st.caption(
                     "Full-year EBIT moves from {}{:,.0f} to {}{:,.0f}, the "
-                    "same {}{:+,.0f} as the forecast, because the H1 "
+                    "same {} as the forecast, because the H1 "
                     "actuals do not change.".format(
                         CURRENCY_SYMBOL, fy_base,
                         CURRENCY_SYMBOL, fy_scen,
-                        CURRENCY_SYMBOL, fy_scen - fy_base))
+                        signed_money(fy_scen - fy_base)))
 
         mo = res.get("monthly")
         if mo:
@@ -578,7 +580,7 @@ with tab_live:
                              use_container_width=True, hide_index=True)
 
                 st.markdown("**Change vs base, by month**")
-                st.dataframe(_grid("delta", lambda v: "{}{:+,.0f}".format(CURRENCY_SYMBOL, v)),
+                st.dataframe(_grid("delta", signed_money),
                              use_container_width=True, hide_index=True)
 
                 st.markdown("**Base by month**")
@@ -627,6 +629,6 @@ if runs:
         cols[0].markdown(badge_html(r["status"]), unsafe_allow_html=True)
         cols[1].write(r["raw_request"])
         if r.get("ebit_delta") is not None:
-            cols[2].write("EBIT {}{:+,.0f}".format(CURRENCY_SYMBOL, r["ebit_delta"]))
+            cols[2].write("EBIT {}".format(signed_money(r["ebit_delta"])))
         if r.get("tokens_in") is not None:
             st.caption(format_cost(r["tokens_in"], r["tokens_out"]))
