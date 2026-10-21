@@ -3,7 +3,9 @@
 # =============================================================================
 # Structured controls: pick drivers, derive a spread, optionally edit it,
 # confirm, and run. Reuses the tested step7/step8/step6 mechanics - the page
-# only orchestrates and renders.
+# only orchestrates and renders. A finished run ends with the Sign-off
+# section (lib/signoff_section.py, the rule in src/signoff.py): it is a DRAFT
+# until a named reviewer signs it.
 #
 # Session-state keys are prefixed tc_ to avoid collision with the single
 # what-if page which shares the same session_state namespace.
@@ -31,6 +33,7 @@ from streamlit_app.lib.example_three_case import THREE_CASE_EXAMPLE
 from streamlit_app.lib.cost import estimate_cost, format_cost
 from streamlit_app.lib.charts import build_three_case_chart, chart_png_bytes
 from streamlit_app.lib.explanation_cards import render_explanation_cards
+from streamlit_app.lib.signoff_section import current_signoff, render_signoff
 
 from config import (
     LINE_ITEMS, DRIVER_DIRECTION, SCHEDULE_DRIVER_TYPES,
@@ -54,6 +57,14 @@ DRIVER_MENU = [
     ("Marketing Spend",   "Marketing customers"),
 ]
 LABEL_TO_LI = {label: li for li, label in DRIVER_MENU}
+
+# The spread engine flags a derived spread as narrow; the page says so when
+# the cases are set, and the Sign-off section lists it as outstanding.
+NARROW_NOTE = ("Some spreads come from very stable history and sit close "
+               "together. Consider widening them.")
+
+# The Sign-off section's keys start with this prefix (lib/signoff_section.py)
+SIGNOFF_PREFIX = "tc_"
 
 
 def _band_for(line_item, level):
@@ -241,9 +252,7 @@ with tab_live:
         display_df = pd.DataFrame(rows)
 
         if any_narrow:
-            st.caption(
-                "Some spreads come from very stable history and sit close "
-                "together. Consider widening them.")
+            st.caption(NARROW_NOTE)
 
         _parts = []
         for li, sp in spreads.items():
@@ -322,7 +331,7 @@ with tab_live:
                                 delta_rows, spreads, basis_text, client=client)
 
                         cost_est = estimate_cost(explain_in, explain_out)
-                        audit.record_run(
+                        run = audit.record_run(
                             "Three-case: " + ", ".join(line_items),
                             "Flexed {} across three cases".format(
                                 ", ".join(line_items)),
@@ -345,6 +354,7 @@ with tab_live:
                             "line_items": line_items,
                             "tokens_in": explain_in,
                             "tokens_out": explain_out,
+                            "run_id": run["run_id"],
                         }
                         st.session_state.tc_phase = "result"
                         st.rerun()
@@ -354,8 +364,10 @@ with tab_live:
     # ── Phase: result ────────────────────────────────────────────────────
     if st.session_state.tc_phase == "result" and st.session_state.tc_result:
         res = st.session_state.tc_result
+        signed = current_signoff(SIGNOFF_PREFIX, res)
         st.markdown("---")
-        st.markdown(status_chip_html(audit.DRAFT), unsafe_allow_html=True)
+        st.markdown(status_chip_html(audit.DRAFT if signed is None else audit.FINAL),
+                    unsafe_allow_html=True)
 
         ebit = res["ebit"]
         if ebit:
@@ -398,30 +410,36 @@ with tab_live:
         if res.get("tokens_in") is not None:
             st.caption(format_cost(res["tokens_in"], res["tokens_out"]))
 
-        col_pdf, col_csv = st.columns(2)
-        try:
-            pdf = three_case_pdf_bytes(
-                res["spreads"], res["delta_rows"], res["explanation"],
-                res["takeaways"], res["basis_text"],
-                case_monthly=res.get("case_monthly"))
-            col_pdf.download_button(
-                "Download report (PDF)", data=pdf,
-                file_name="three_case_analysis.pdf",
-                mime="application/pdf")
-        except Exception:
-            col_pdf.caption("PDF download unavailable.")
-
+        # The data stays a plain download; the report moves into Sign-off
         try:
             csv_data = three_case_csv_bytes(res["delta_rows"])
-            col_csv.download_button(
+            st.download_button(
                 "Download data (CSV)", data=csv_data,
                 file_name="three_case_deltas.csv",
                 mime="text/csv")
         except Exception:
-            col_csv.caption("CSV download unavailable.")
+            st.caption("CSV download unavailable.")
 
-        if st.button("Run another analysis"):
-            _tc_reset(); st.rerun()
+        def _report(status_line):
+            """The report as PDF bytes, with the sign-off status line."""
+            return three_case_pdf_bytes(
+                res["spreads"], res["delta_rows"], res["explanation"],
+                res["takeaways"], res["basis_text"],
+                case_monthly=res.get("case_monthly"), status_line=status_line)
+
+        # Sign-off: the engine's own warning for these cases is what is
+        # outstanding (a narrow spread, said when the cases were set). No
+        # input is on screen with a result, so it is never stale.
+        st.divider()
+        outstanding = ([NARROW_NOTE] if any(sp.get("narrow") for sp
+                                            in res["spreads"].values()) else [])
+        render_signoff(
+            SIGNOFF_PREFIX, res, outstanding, _report,
+            file_name="three_case_analysis.pdf",
+            unavailable="PDF download unavailable.")
+
+        # A callback, as Sign off is: the page is cleared before it is drawn
+        st.button("Run another analysis", on_click=_tc_reset)
 
 # ── The session audit record ────────────────────────────────────────────────
 runs = audit.get_runs()
@@ -431,10 +449,13 @@ if runs:
     st.caption("Every run you make is listed here for this session.")
     for r in runs:
         cols = st.columns([2, 5, 2])
-        cols[0].markdown(status_chip_html(r["status"]) if r["status"] == audit.DRAFT
+        cols[0].markdown(status_chip_html(r["status"])
+                         if r["status"] in (audit.DRAFT, audit.FINAL)
                          else badge_html(r["status"]), unsafe_allow_html=True)
         cols[1].write(r["raw_request"])
         if r.get("ebit_delta") is not None:
             cols[2].write("EBIT {}".format(signed_money(r["ebit_delta"])))
+        if audit.signed_line(r):
+            st.caption(audit.signed_line(r))
         if r.get("tokens_in") is not None:
             st.caption(format_cost(r["tokens_in"], r["tokens_out"]))

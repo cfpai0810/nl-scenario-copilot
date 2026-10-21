@@ -24,21 +24,34 @@ from src.step6_explainer import (
     _cover_block, _section_header, _assumptions_table, _delta_table,
     _held_constant_box, _takeaways_box, _monthly_table, _quarterly_table,
     _three_case_story,
-    clean_markdown, signed_money,
-    S_BODY, S_BODY_JUST, S_META, RULE_COLOR,
+    clean_markdown, pdf_safe, signed_money,
+    S_BODY, S_BODY_JUST, S_META, RULE_COLOR, DARK_BLUE,
 )
+from reportlab.lib.styles import ParagraphStyle
 from config import MODEL, DEFAULT_ENTITY, EBIT_LABEL, CURRENCY_SYMBOL
 
 import re
 
+# The sign-off status line under the cover of a live run's report (Step 5b)
+S_STATUS = ParagraphStyle("Status", fontName="Helvetica-Bold", fontSize=10,
+                          textColor=DARK_BLUE, leading=14)
+
+
+def _status_paragraph(status_line):
+    """The report's sign-off status line (src/signoff.py's pdf_status_line),
+    escaped by pdf_safe so a reviewer's name is never read as markup."""
+    return Paragraph(pdf_safe(status_line), S_STATUS)
+
 
 def scenario_pdf_bytes(request, echo, deltas, analysis_type, held_constant,
                        explanation, assumption_rows, takeaways,
-                       monthly=None, quarterly=None, quarterly_ebit=None):
+                       monthly=None, quarterly=None, quarterly_ebit=None,
+                       status_line=None):
     """Build the single-scenario report and return it as PDF bytes for a
     download button. Reuses the exact story-builders the CLI PDF uses; only
     the output target (a BytesIO buffer) and the skipped audit-file mutation
-    differ."""
+    differ. status_line is the live run's sign-off status (DRAFT or FINAL),
+    printed under the cover; left as None, nothing is added."""
     now = datetime.now(timezone.utc)
     ts_log = now.isoformat()
     buffer = BytesIO()
@@ -46,6 +59,9 @@ def scenario_pdf_bytes(request, echo, deltas, analysis_type, held_constant,
     story = []
     story.append(_cover_block(DEFAULT_ENTITY, request, analysis_type, ts_log))
     story.append(Spacer(1, 0.4 * cm))
+    if status_line:
+        story.append(_status_paragraph(status_line))
+        story.append(Spacer(1, 0.3 * cm))
 
     story.append(_section_header("THE REQUEST"))
     story.append(Spacer(1, 0.2 * cm))
@@ -155,9 +171,11 @@ def scenario_pdf_bytes(request, echo, deltas, analysis_type, held_constant,
 
 
 def three_case_pdf_bytes(spreads, delta_rows, explanation, takeaways,
-                         basis_text, case_monthly=None):
+                         basis_text, case_monthly=None, status_line=None):
     """Build the three-case report and return it as PDF bytes. Reuses the same
-    shared story builder the CLI PDF uses; only the output target differs."""
+    shared story builder the CLI PDF uses; only the output target differs.
+    status_line is the live run's sign-off status (DRAFT or FINAL), printed
+    under the cover; left as None, nothing is added."""
     buffer = BytesIO()
     story = _three_case_story(spreads, delta_rows, explanation, takeaways,
                               basis_text)
@@ -172,6 +190,11 @@ def three_case_pdf_bytes(spreads, delta_rows, explanation, takeaways,
         story.insert(2, Image(
             _imgbuf, width=PAGE_W, height=PAGE_W * _ih / _iw))
         story.insert(3, Spacer(1, 0.25 * cm))
+
+    if status_line:
+        # Under the cover and its spacer, above the chart and the cases
+        story.insert(2, _status_paragraph(status_line))
+        story.insert(3, Spacer(1, 0.3 * cm))
 
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,

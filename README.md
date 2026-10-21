@@ -170,6 +170,14 @@ The script surfaces the latest run, what was changed, the resulting impact,
 and the assumptions held constant, then requires an explicit confirmation
 before recording who signed off and when.
 
+The web app has its own sign-off. Each tool page ends a finished run with a
+Sign-off section that lists the engine's own warnings for the run. The result
+stays a DRAFT until a named reviewer types their name and the word SIGN; it
+is then FINAL, and its PDF and the session's audit list carry the name and
+the time. They are not stored on the server, and the name is not verified. A
+new run is a new DRAFT. The rule lives in `src/signoff.py`, the same in every
+project of the series.
+
 ---
 
 ## How to run
@@ -216,12 +224,14 @@ src/
   step6_explainer.py             Takeaways, commentary, reports, audit
   step7_scenario_spread.py       Three-case spread: derived, band, or manual
   step8_three_case.py            Run base plus three cases
+  signoff.py                     The sign-off rule: a named reviewer types SIGN (DRAFT or FINAL)
 
 data/                            Five input files, reused from Project 2
 docs/                            Flow blueprint and sample outputs
 output/                          Generated files (gitignored)
 tests/
-  test_pipeline.py               284 tests
+  test_pipeline.py               299 tests
+  test_signoff.py                8 tests: the sign-off rule
 ```
 
 ---
@@ -259,18 +269,19 @@ confirmation.
 
 ## Test suite
 
-284 tests, no real API calls:
+307 tests, no real API calls:
 
 ```bash
 pip install -r requirements-dev.txt
-pytest tests/test_pipeline.py -v
+pytest tests -v
 ```
 
 The classes cover base model loading, all seven operations and their
 rejections, the classification logic, the echo back, the direction of the
 case labelling, the spread modes and narrow detection, historical rate
 extraction, the scenario engine including the deep copy isolation, the
-three-case runner, JSON parsing, and the explainer helpers.
+three-case runner, JSON parsing, the explainer helpers, and the sign-off
+rule and section.
 
 The strongest test asserts that the realistic case reproduces the base run
 line for line, which proves the case machinery is clean. The menus are

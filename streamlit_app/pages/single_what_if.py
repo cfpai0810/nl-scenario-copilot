@@ -8,7 +8,9 @@
 # stored in session state and rendered from there, so a rerun (e.g. clicking
 # the PDF download) never loses the result. Each finished, refused or
 # ambiguous run is written to the per-session audit record (a confirm-step
-# Rephrase records nothing). The first tab, open on arrival, shows a full
+# Rephrase records nothing). A finished run ends with the Sign-off section
+# (lib/signoff_section.py, the rule in src/signoff.py): it is a DRAFT until a
+# named reviewer signs it. The first tab, open on arrival, shows a full
 # worked result with no API key.
 #
 # All heavy logic is the existing, tested pipeline (src/step3..step6). This
@@ -39,6 +41,7 @@ from streamlit_app.lib.charts import (
     build_quarterly_chart, extract_quarterly_ebit, chart_png_bytes,
 )
 from streamlit_app.lib.explanation_cards import render_explanation_cards
+from streamlit_app.lib.signoff_section import current_signoff, render_signoff
 
 from config import EBIT_LABEL, CURRENCY_SYMBOL
 from src.step6_explainer import signed_money, delta_color_for
@@ -79,6 +82,12 @@ if "parsed" not in st.session_state:
     st.session_state.parsed = None
 if "result" not in st.session_state:
     st.session_state.result = None       # the persisted computed result
+
+# The Sign-off section's keys start with this prefix (lib/signoff_section.py).
+# _ASKED_KEY keeps the request last sent with "Interpret this": a result made
+# from another request is stale, and Sign off waits for a new run.
+SIGNOFF_PREFIX = "swi_"
+_ASKED_KEY = "swi_asked"
 
 
 def _reset():
@@ -167,6 +176,7 @@ with tab_live:
 
     if submitted:
         request = typed.strip()
+        st.session_state[_ASKED_KEY] = request
         if not request:
             st.warning("Type a what-if, or pick an example, first.")
         elif client is None:
@@ -440,7 +450,7 @@ with tab_live:
                             rev = headline.get("Revenue")
                             ebit = headline.get("EBIT")
                             cost_est = estimate_cost(total_in, total_out)
-                            audit.record_run(
+                            run = audit.record_run(
                                 p["request"], echo, audit.DRAFT,
                                 revenue_delta=(rev["delta"]
                                                if rev else None),
@@ -465,6 +475,7 @@ with tab_live:
                                 "assumption_rows": assumption_rows,
                                 "tokens_in": total_in,
                                 "tokens_out": total_out,
+                                "run_id": run["run_id"],
                             }
                             st.session_state.phase = "result"
                             st.rerun()
@@ -475,8 +486,10 @@ with tab_live:
     # ── Render the persisted result (survives reruns) ────────────────────────
     if st.session_state.phase == "result" and st.session_state.result:
         res = st.session_state.result
+        signed = current_signoff(SIGNOFF_PREFIX, res)
         st.markdown("---")
-        st.markdown(status_chip_html(audit.DRAFT), unsafe_allow_html=True)
+        st.markdown(status_chip_html(audit.DRAFT if signed is None else audit.FINAL),
+                    unsafe_allow_html=True)
 
         ebit_row = next((d for d in res["deltas"]
                          if d["line"] == EBIT_LABEL), None)
@@ -601,26 +614,32 @@ with tab_live:
         if res.get("tokens_in") is not None:
             st.caption(format_cost(res["tokens_in"], res["tokens_out"]))
 
-        try:
+        def _report(status_line):
+            """The report as PDF bytes, with the sign-off status line."""
             _qe = None
             if res.get("quarterly"):
                 _qe = extract_quarterly_ebit(res["quarterly"])
-            pdf = scenario_pdf_bytes(
+            return scenario_pdf_bytes(
                 res["request"], res["echo"], res["deltas"], res["analysis"],
                 res["held_constant"], res["explanation"],
                 res["assumption_rows"], res["takeaways"],
                 monthly=res.get("monthly"),
                 quarterly=res.get("quarterly"),
-                quarterly_ebit=_qe)
-            st.download_button(
-                "Download the report (PDF)", data=pdf,
-                file_name="scenario_analysis.pdf", mime="application/pdf")
-        except Exception:
-            st.caption("The report is shown above; the PDF download is "
-                       "unavailable in this session.")
+                quarterly_ebit=_qe, status_line=status_line)
 
-        if st.button("Run another what-if"):
-            _reset(); st.rerun()
+        # Sign-off: the engine's own warnings for this run are what is
+        # outstanding (the held-constant note above). The request last sent
+        # with "Interpret this" must be the one this result was made from.
+        st.divider()
+        render_signoff(
+            SIGNOFF_PREFIX, res, list(res["held_constant"]), _report,
+            file_name="scenario_analysis.pdf",
+            unavailable="The report is shown above; the PDF download is "
+                        "unavailable in this session.",
+            stale=st.session_state.get(_ASKED_KEY, res["request"]) != res["request"])
+
+        # A callback, as Sign off is: the page is cleared before it is drawn
+        st.button("Run another what-if", on_click=_reset)
 
 # ── The session audit record (visible governance) ──────────────────────────
 runs = audit.get_runs()
@@ -632,10 +651,13 @@ if runs:
                "permanent record.")
     for r in runs:
         cols = st.columns([2, 5, 2])
-        cols[0].markdown(status_chip_html(r["status"]) if r["status"] == audit.DRAFT
+        cols[0].markdown(status_chip_html(r["status"])
+                         if r["status"] in (audit.DRAFT, audit.FINAL)
                          else badge_html(r["status"]), unsafe_allow_html=True)
         cols[1].write(r["raw_request"])
         if r.get("ebit_delta") is not None:
             cols[2].write("EBIT {}".format(signed_money(r["ebit_delta"])))
+        if audit.signed_line(r):
+            st.caption(audit.signed_line(r))
         if r.get("tokens_in") is not None:
             st.caption(format_cost(r["tokens_in"], r["tokens_out"]))

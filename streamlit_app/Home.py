@@ -51,8 +51,7 @@ def _home_page():
         "- Runs it through the driver-based forecast and compares the result "
         "with the base plan, line by line.\n"
         "- The model explains the result.\n"
-        "- Produces a PDF report. On the web a finished run stays a draft for "
-        "review.")
+        "- Produces a PDF report, a DRAFT until a named reviewer signs it.")
 
     st.markdown("#### The governance promise")
     st.markdown(
@@ -62,8 +61,8 @@ def _home_page():
         "never by the model.\n"
         "- **The model explains.** It writes the wording around figures it was "
         "given. This version does not check the numbers in that wording.\n"
-        "- **A person reviews.** This version has no sign-off step on the web, so "
-        "nothing here is signed or final.")
+        "- **The reviewer signs.** Nothing is final until a named reviewer reads it "
+        "and signs.")
 
     st.markdown("#### Pages")
     st.page_link(HOW_MODEL_WORKS, label="How the model works: the drivers behind "

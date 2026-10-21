@@ -3,8 +3,8 @@
 # =============================================================================
 # The exact palette the PDFs already use (step6_explainer), so the web app and
 # the report it produces read as a single product. Governance status colours
-# do real work here: the amber DRAFT chip on a finished run, and the badges
-# for a request that did not run (amber caution, red refused).
+# do real work here: the amber DRAFT and green FINAL chips on a finished run,
+# and the badges for a request that did not run (amber caution, red refused).
 #
 # Typography: Source Serif 4 for headings (institutional authority) and Inter
 # for body, UI, and data (screen-first, with tabular figures so numbers align
@@ -29,11 +29,11 @@ NEAR_WHITE = "#FBFAF7"
 DRAFT_CHIP = "#B45F06"
 FINAL_CHIP = "#2E6B3F"
 
-# Status badge colours (background, text) — the governance state made visible
+# Status badge colours (background, text) for a request that did not run. A
+# finished run shows the DRAFT or FINAL chip instead; the web has no approved
+# or locked state (those belong to the production lifecycle).
 BADGE = {
     "draft":    (LIGHT_BLUE, DARK_BLUE),
-    "approved": ("#E1F5EE",  GREEN),
-    "locked":   ("#E6F1FB",  MID_BLUE),
     "refused":  ("#F7E4E4",  FLAG_RED),
     "caution":  (AMBER_BG,   AMBER),
 }

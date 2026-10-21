@@ -74,11 +74,13 @@ st.write(
     "shorter list, for your session only: each finished run and each refused "
     "or ambiguous what-if, with its status and token count. It has no input "
     "fingerprint, no model id and no parsed values, and a what-if you cancel "
-    "with Rephrase before it runs is not recorded.")
+    "with Rephrase before it runs is not recorded. A run you sign off is "
+    "marked FINAL in the list, with the reviewer's name, the time and the "
+    "warnings shown at sign-off.")
 
 st.info(
     "In one line: the model reads your request and writes the explanation; "
-    "Python calculates every figure; you review the result. "
+    "Python calculates every figure; you review and sign off the result. "
     "The intelligence is at the edges, and the numbers in the middle are "
     "deterministic and checkable.")
 
@@ -90,10 +92,10 @@ st.write(
     "becomes the immutable record: it is what everyone reads afterwards, "
     "and it cannot be edited. A later change is issued as a new, "
     "separately approved version, and the original approved explanation still "
-    "stands unchanged. This live demo stops at flagging for review; it "
-    "does not store or lock anything, so no data is retained. The "
-    "lifecycle diagram above shows the full model this design is built "
-    "towards.")
+    "stands unchanged. This live demo stops at a typed sign-off, kept for "
+    "your session; it does not store or lock anything, so no data is "
+    "retained. The lifecycle diagram above shows the full model this design "
+    "is built towards.")
 
 # ── Part 2: the technical detail (engineer / evaluator) ──────────────────────
 st.markdown("---")

@@ -2385,7 +2385,7 @@ class TestCostEstimate:
         from streamlit_app.lib import audit
         st.session_state["audit_runs"] = []
         cost_est = estimate_cost(100, 50)
-        audit.record_run("test request", "test echo", "approved",
+        audit.record_run("test request", "test echo", audit.DRAFT,
                          tokens_in=100, tokens_out=50,
                          cost_estimate=cost_est)
         runs = audit.get_runs()
@@ -3044,9 +3044,10 @@ def _replying_anthropic():
 
 
 class TestItem31DraftForReview:
-    """Nobody approves anything on the web, so the worked example and every
-    finished web run carry the DRAFT chip, never "Approved" (item 31). Since
-    Step 5a the chip is the series' amber DRAFT, not the blue badge."""
+    """The web never approves: the worked example and every finished web run
+    carry the DRAFT chip, never "Approved" (item 31). Since Step 5a the chip
+    is the series' amber DRAFT, not the blue badge; since Step 5b a run is
+    FINAL only once a named reviewer signs it off (TestStep5bSignOff)."""
 
     CHIP = '<span class="sc-status draft">DRAFT</span>'
 
@@ -3072,7 +3073,8 @@ class TestItem31DraftForReview:
         assert at.session_state["phase"] == "result"
         assert [r["status"] for r in at.session_state["audit_runs"]] == ["draft"]
         badges = self._badges(at)
-        assert len(badges) == 3   # the example, the result, the audit list
+        # the example, the result, its Sign-off section, the audit list
+        assert len(badges) == 4
         assert all(self.CHIP in b for b in badges)
 
         # Three-case: a finished live run.
@@ -3086,7 +3088,7 @@ class TestItem31DraftForReview:
         assert at.session_state["tc_phase"] == "result"
         assert [r["status"] for r in at.session_state["audit_runs"]] == ["draft"]
         badges = self._badges(at)
-        assert len(badges) == 2   # the result, the audit list
+        assert len(badges) == 3   # the result, its Sign-off section, the audit list
         assert all(self.CHIP in b for b in badges)
 
         # No web page sets the approved status any more.
@@ -3242,9 +3244,10 @@ class TestStep5aLook:
         promise = values[values.index("#### The governance promise") + 1]
         assert [line.split("**")[1] for line in promise.splitlines()] == [
             "The model reads.", "Python calculates.", "The model explains.",
-            "A person reviews."]
-        assert promise.endswith("- **A person reviews.** This version has no sign-off "
-                                "step on the web, so nothing here is signed or final.")
+            "The reviewer signs."]
+        # Since Step 5b, the series' bullet (TestStep5bSignOff.test_5b_wording)
+        assert promise.endswith("- **The reviewer signs.** Nothing is final until a "
+                                "named reviewer reads it and signs.")
         # One link per page except Home, in the navigation order, each with
         # the page's own icon and "Title: what it is"
         links = at.get("page_link")
@@ -3320,3 +3323,524 @@ class TestStep5aLook:
         _, seen = _home_with_spies(monkeypatch)
         tool = next(p for p in seen["pages"] if p.title == "Single what-if")
         assert seen["page_config"]["page_icon"] == tool.icon == ":material/tune:"
+
+
+# =============================================================================
+# Step 5b: the sign-off section, after Project 6 (both tool pages)
+# =============================================================================
+
+SWI_PAGE = APP_DIR / "pages" / "single_what_if.py"
+TC_PAGE = APP_DIR / "pages" / "three_case.py"
+_DRAFT_CHIP = '<span class="sc-status draft">DRAFT</span>'
+_FINAL_CHIP = '<span class="sc-status final">FINAL</span>'
+# The scenario engine's own warning for a marketing change (the stand-in's parse)
+_HELD = ("Marketing and customer changes do not flow through to Revenue, which "
+         "is modelled on its own seasonal trend, so the revenue line is "
+         "unchanged in this scenario.")
+_NARROW = ("Some spreads come from very stable history and sit close together. "
+           "Consider widening them.")
+
+
+def _pdf_unescape(match):
+    """One PDF string escape: an octal code (a character such as é) or a
+    character taken as it is."""
+    code = match.group(1)
+    return bytes([int(code, 8)]) if code[0] in b"01234567" else code
+
+
+def _pdf_text(pdf):
+    """The text of a ReportLab PDF, read with the standard library only: the
+    strings each page stream draws, in order. Image streams are skipped."""
+    import base64
+    import re
+    import zlib
+    out = []
+    for head, raw in re.findall(rb"<<((?:(?!>>).)*)>>\s*stream\r?\n(.*?)endstream",
+                                pdf, re.S):
+        if b"/Image" in head:
+            continue
+        data = zlib.decompress(base64.a85decode(raw.strip().removesuffix(b"~>")))
+        for s in re.findall(rb"\(((?:[^()\\]|\\.)*)\)\s*Tj", data):
+            out.append(re.sub(rb"\\([0-7]{1,3}|.)", _pdf_unescape, s, flags=re.S)
+                       .decode("latin-1"))
+    return " ".join(" ".join(out).split())
+
+
+@pytest.fixture
+def downloads(monkeypatch):
+    """Reads the file behind a download button: while the test runs, every
+    file the page hands to one is kept by its media id."""
+    from streamlit.runtime.memory_media_file_storage import MemoryMediaFileStorage
+    files = {}
+    load = MemoryMediaFileStorage.load_and_get_id
+
+    def _load(self, data, mimetype, kind, filename=None):
+        file_id = load(self, data, mimetype, kind, filename)
+        files[file_id] = self.get_file(file_id).content
+        return file_id
+
+    monkeypatch.setattr(MemoryMediaFileStorage, "load_and_get_id", _load)
+
+    def read(at, label):
+        (button,) = [d for d in at.get("download_button") if d.proto.label == label]
+        return files[button.proto.url.rsplit("/", 1)[-1].split(".")[0]]
+    return read
+
+
+def _ask(at, request, confirm=True):
+    """Interpret this, then Confirm and run (Single what-if)."""
+    next(t for t in at.text_input if t.label == "Your what-if").input(request)
+    next(b for b in at.button if b.label == "Interpret this").click().run()
+    if confirm:
+        next(b for b in at.button if b.label == "Confirm and run").click().run()
+        assert not at.exception and at.session_state["phase"] == "result"
+
+
+def _derive(at, drivers, confirm=True):
+    """Derive cases, then Confirm and run (Three-case)."""
+    at.multiselect[0].set_value(drivers).run()
+    next(b for b in at.button if b.label == "Derive cases").click().run()
+    if confirm:
+        next(b for b in at.button if b.label == "Confirm and run").click().run()
+        assert not at.exception and at.session_state["tc_phase"] == "result"
+
+
+def _live_page(page, monkeypatch):
+    """A tool page with the stand-in client and a key entered."""
+    from streamlit.testing.v1 import AppTest
+    monkeypatch.setattr(anthropic, "Anthropic", _replying_anthropic())
+    at = AppTest.from_file(str(page), default_timeout=90).run()
+    at.text_input(key="byo_api_key").input(STAND_IN_KEY).run()
+    return at
+
+
+@pytest.fixture
+def swi_result(monkeypatch):
+    """Single what-if after a finished run, with the stand-in client."""
+    at = _live_page(SWI_PAGE, monkeypatch)
+    _ask(at, "Cut marketing spend by 20 percent")
+    return at
+
+
+@pytest.fixture
+def tc_result(monkeypatch):
+    """Three-case after a finished run (COGS margin, cases as derived)."""
+    at = _live_page(TC_PAGE, monkeypatch)
+    _derive(at, ["COGS margin"])
+    return at
+
+
+def _section(at):
+    """The Sign-off section's markdown, from its heading on ("Run it yourself")."""
+    values = [m.value for m in at.tabs[1].markdown]
+    return values[values.index("#### Sign-off"):]
+
+
+def _result_chip(at):
+    """The chip at the top of the result, under its rule."""
+    values = [m.value for m in at.tabs[1].markdown]
+    return values[values.index("---") + 1]
+
+
+def _sign(at, prefix, name="José Núñez", word="SIGN"):
+    at.text_input(key=prefix + "reviewer").input(name).run()
+    at.text_input(key=prefix + "sign").input(word).run()
+    at.button(key=prefix + "btn_signoff").click().run()
+    assert not at.exception
+
+
+def _boxes(at, prefix):
+    return [(t.key, t.value) for t in at.text_input
+            if t.key in (prefix + "reviewer", prefix + "sign")]
+
+
+def _signoff_buttons(at, prefix):
+    return [b for b in at.button if b.key == prefix + "btn_signoff"]
+
+
+def _statuses(at):
+    return [r["status"] for r in at.session_state["audit_runs"]]
+
+
+def _flat(text):
+    """PDF text without its spaces: the reader splits a line at each escape."""
+    return "".join(text.split())
+
+
+class TestStep5bSignOff:
+    """The Sign-off section on both tool pages: the rule in src/signoff.py,
+    drawn by lib/signoff_section.py, as in Project 6 (Step 5b)."""
+
+    def test_5b_the_sentence_is_the_briefs(self):
+        from streamlit_app.lib.signoff_section import SENTENCE
+        assert SENTENCE == ("Signing says you have read the result against the "
+                            "figures above. The figures come from Python. This "
+                            "version does not check the numbers in the model's "
+                            "wording.")
+
+    @pytest.mark.parametrize("page,prefix", [(SWI_PAGE, "swi_"), (TC_PAGE, "tc_")])
+    def test_5b_no_section_without_a_result(self, page, prefix, monkeypatch):
+        at = _live_page(page, monkeypatch)
+        assert not at.exception
+        # The worked example has no section and no download, as before
+        assert "#### Sign-off" not in [m.value for m in at.markdown]
+        assert not at.get("download_button")
+        assert not _boxes(at, prefix) and not _signoff_buttons(at, prefix)
+        # Up to the confirm step there is still no result to sign
+        if prefix == "swi_":
+            _ask(at, "Cut marketing spend by 20 percent", confirm=False)
+        else:
+            _derive(at, ["COGS margin"], confirm=False)
+        assert not at.exception
+        assert "#### Sign-off" not in [m.value for m in at.markdown]
+        assert not _boxes(at, prefix) and not _signoff_buttons(at, prefix)
+
+    def test_5b_single_what_if_from_run_to_final(self, downloads, swi_result):
+        import re
+        from src.signoff import (
+            NAME_REFUSAL, SCOPE_NOTE, WORD_HELP, WORD_LABEL, WORD_REFUSAL, when_text,
+        )
+        from streamlit_app.lib.signoff_section import SENTENCE
+        at = swi_result
+        live = at.tabs[1]
+        # After the result, at the level of its sibling sections, before the audit
+        assert [m.value for m in live.markdown if m.value.startswith("#")] == [
+            "#### Impact on the forecast (Jul-Dec 2026)",
+            "#### Full year with your scenario", "#### Sign-off"]
+        main = [m.value for m in at.main.markdown]
+        assert main.index("#### Sign-off") < main.index("#### This session's audit")
+        assert _section(at) == ["#### Sign-off", SENTENCE, _DRAFT_CHIP,
+                                "Outstanding before you sign:", "1. " + _HELD]
+        assert _result_chip(at) == _DRAFT_CHIP
+        assert [(t.label, t.help) for t in live.text_input
+                if t.key in ("swi_reviewer", "swi_sign")] == [
+            ("Reviewer name", ""), (WORD_LABEL, WORD_HELP)]
+        (button,) = _signoff_buttons(at, "swi_")
+        assert button.label == "Sign off" and button.proto.type == "primary"
+        assert not button.disabled
+        assert [c.value for c in live.caption].count(SCOPE_NOTE) == 1
+        assert [d.proto.label for d in at.get("download_button")] == [
+            "Download the DRAFT PDF"]
+        draft = _pdf_text(downloads(at, "Download the DRAFT PDF"))
+        assert re.search(r"^WHAT-IF SCENARIO ANALYSIS Valencia Operations · "
+                         r"Sensitivity · \d{4}-\d\d-\d\d DRAFT: not signed off "
+                         r"THE REQUEST Asked: ", draft)
+
+        # Refused: no name, a wrong word, the word in lower case. Each stays DRAFT.
+        for name, word, refusal in [("   ", "SIGN", NAME_REFUSAL),
+                                    ("José Núñez", "SIGNED", WORD_REFUSAL),
+                                    ("José Núñez", "sign", WORD_REFUSAL)]:
+            _sign(at, "swi_", name, word)
+            assert [w.value for w in at.tabs[1].warning] == [refusal]
+            assert _section(at)[2] == _DRAFT_CHIP
+            assert _result_chip(at) == _DRAFT_CHIP
+            assert "swi_signed_off" not in at.session_state
+            assert _statuses(at) == ["draft"]
+
+        # Signed: FINAL, the signed line, read only, the FINAL PDF
+        _sign(at, "swi_", "José Núñez", " SIGN ")
+        signed = at.session_state["swi_signed_off"]
+        when = when_text(signed.signed_at)
+        line = "Signed off by José Núñez on {}.".format(when)
+        assert _section(at) == ["#### Sign-off", SENTENCE,
+                                "{}&nbsp; {}".format(_FINAL_CHIP, line)]
+        assert _result_chip(at) == _FINAL_CHIP
+        assert not at.tabs[1].warning
+        assert not _boxes(at, "swi_") and not _signoff_buttons(at, "swi_")
+        assert [c.value for c in at.tabs[1].caption].count(SCOPE_NOTE) == 1
+        assert [d.proto.label for d in at.get("download_button")] == [
+            "Download the FINAL PDF"]
+        final = _pdf_text(downloads(at, "Download the FINAL PDF"))
+        assert re.search(r"^WHAT-IF SCENARIO ANALYSIS Valencia Operations · "
+                         r"Sensitivity · \d{4}-\d\d-\d\d FINAL: signed off by "
+                         r"José Núñez on " + re.escape(when) + " THE REQUEST", final)
+        assert "DRAFT: not signed off" not in final
+
+        # The run's audit row carries the sign-off and what it acknowledged,
+        # and the session audit list shows it FINAL with the signed line
+        (row,) = at.session_state["audit_runs"]
+        assert row["run_id"] == at.session_state["result"]["run_id"]
+        assert {k: row[k] for k in ("status", "signed_off_by", "signed_off_at",
+                                    "acknowledged_at_sign_off")} == {
+            "status": "final", "signed_off_by": "José Núñez",
+            "signed_off_at": signed.signed_at.isoformat(),
+            "acknowledged_at_sign_off": [_HELD]}
+        assert row["raw_request"] == "Cut marketing spend by 20 percent"
+        main = [m.value for m in at.main.markdown]
+        audit_list = main[main.index("#### This session's audit"):]
+        assert _FINAL_CHIP in audit_list and _DRAFT_CHIP not in audit_list
+        assert line in [c.value for c in at.main.caption]
+
+    def test_5b_single_what_if_a_second_signoff_is_refused(self, swi_result):
+        from src.signoff import ALREADY_SIGNED
+        at = swi_result
+        _sign(at, "swi_")
+        signed = at.session_state["swi_signed_off"]
+        result = at.session_state["swi_signed_for"]
+        row = dict(at.session_state["audit_runs"][0])
+        # The page offers no second Sign off.
+        assert not _signoff_buttons(at, "swi_") and not _boxes(at, "swi_")
+        # And the rule refuses one: a second click that lands after the first,
+        # from the section as it was drawn before the first sign-off.
+        del at.session_state["swi_signed_off"]
+        at.run()
+        at.text_input(key="swi_sign").input("SIGN").run()
+        at.session_state["swi_signed_off"] = signed
+        at.session_state["swi_signed_for"] = result
+        at.button(key="swi_btn_signoff").click().run()
+        assert not at.exception
+        assert [w.value for w in at.tabs[1].warning] == [ALREADY_SIGNED]
+        assert at.session_state["swi_signed_off"] == signed
+        assert at.session_state["audit_runs"] == [row]
+        assert _section(at)[2].startswith(_FINAL_CHIP)
+
+    def test_5b_single_what_if_a_new_run_is_a_new_draft(self, downloads, swi_result):
+        at = swi_result
+        _sign(at, "swi_")
+        first = at.session_state["result"]["run_id"]
+        next(b for b in at.button if b.label == "Run another what-if").click().run()
+        assert "#### Sign-off" not in [m.value for m in at.markdown]
+        # The same request, run again: a new result, so a new DRAFT. The name
+        # stays filled in; SIGN must be typed again.
+        _ask(at, "Cut marketing spend by 20 percent")
+        assert at.session_state["result"]["run_id"] != first
+        assert _section(at)[2] == _DRAFT_CHIP and _result_chip(at) == _DRAFT_CHIP
+        assert _boxes(at, "swi_") == [("swi_reviewer", "José Núñez"), ("swi_sign", "")]
+        assert "swi_signed_off" not in at.session_state
+        assert "DRAFT: not signed off" in _pdf_text(
+            downloads(at, "Download the DRAFT PDF"))
+        assert _statuses(at) == ["final", "draft"]
+        _sign(at, "swi_")
+        assert _statuses(at) == ["final", "final"]
+        assert at.session_state["audit_runs"][1]["run_id"] == \
+            at.session_state["result"]["run_id"]
+
+    def test_5b_the_name_stays_without_a_signoff(self, swi_result):
+        at = swi_result
+        at.text_input(key="swi_reviewer").input("A. Reviewer").run()
+        next(b for b in at.button if b.label == "Run another what-if").click().run()
+        _ask(at, "Cut marketing spend by 20 percent")
+        assert _boxes(at, "swi_") == [("swi_reviewer", "A. Reviewer"), ("swi_sign", "")]
+
+    def test_5b_single_what_if_a_changed_request_is_stale(self, swi_result):
+        from src.signoff import STALE_CAPTION
+
+        def state():
+            (button,) = _signoff_buttons(at, "swi_")
+            return button.disabled, STALE_CAPTION in [c.value for c in at.caption]
+
+        at = swi_result
+        assert state() == (False, False)
+        # The key on its own is not an input of the result: removed, the
+        # result and its section stay as they are.
+        at.text_input(key="byo_api_key").input("").run()
+        assert state() == (False, False)
+        # Another request sent with no key cannot run, so the result on screen
+        # was made from a request that no longer stands: Sign off waits.
+        _ask(at, "Set revenue growth to 8 percent", confirm=False)
+        assert [w.value for w in at.tabs[1].warning] == [
+            "Paste your API key in the sidebar to run a live analysis."]
+        assert at.session_state["phase"] == "result"
+        assert _section(at)[2] == _DRAFT_CHIP
+        assert state() == (True, True)
+        # The request it was made from, sent again: no longer stale
+        _ask(at, "Cut marketing spend by 20 percent", confirm=False)
+        assert state() == (False, False)
+        # An empty box sent is not the request either
+        _ask(at, "", confirm=False)
+        assert state() == (True, True)
+
+    def test_5b_a_key_change_alone_keeps_the_signoff(self, swi_result):
+        at = swi_result
+        _sign(at, "swi_")
+        section = _section(at)
+        at.text_input(key="byo_api_key").input("sk-ant-api03-" + "y" * 90).run()
+        assert _section(at) == section and _result_chip(at) == _FINAL_CHIP
+        at.text_input(key="byo_api_key").input("").run()
+        assert _section(at) == section
+        assert _statuses(at) == ["final"]
+
+    def test_5b_three_case_from_run_to_final(self, downloads, tc_result):
+        import re
+        from src.signoff import SCOPE_NOTE, STALE_CAPTION, WORD_REFUSAL, when_text
+        from streamlit_app.lib.signoff_section import SENTENCE
+        from streamlit_app.lib.web_emit import three_case_csv_bytes
+        at = tc_result
+        live = at.tabs[1]
+        assert [m.value for m in live.markdown if m.value.startswith("#")] == [
+            "#### Profit and loss across cases", "#### Sign-off"]
+        main = [m.value for m in at.main.markdown]
+        assert main.index("#### Sign-off") < main.index("#### This session's audit")
+        # COGS margin as derived is a narrow spread: the engine's own warning
+        assert _section(at) == ["#### Sign-off", SENTENCE, _DRAFT_CHIP,
+                                "Outstanding before you sign:", "1. " + _NARROW]
+        assert _result_chip(at) == _DRAFT_CHIP
+        # The CSV download stays as it was; the PDF is the DRAFT PDF
+        assert [d.proto.label for d in at.get("download_button")] == [
+            "Download data (CSV)", "Download the DRAFT PDF"]
+        assert downloads(at, "Download data (CSV)") == three_case_csv_bytes(
+            at.session_state["tc_result"]["delta_rows"])
+        draft = _pdf_text(downloads(at, "Download the DRAFT PDF"))
+        assert re.search(r"^WHAT-IF SCENARIO ANALYSIS Valencia Operations · "
+                         r"Three-case · \d{4}-\d\d-\d\d DRAFT: not signed off "
+                         r"CASES ", draft)
+        # No input is on screen with a result, so it is never stale
+        assert not at.multiselect and not at.radio
+        (button,) = _signoff_buttons(at, "tc_")
+        assert not button.disabled
+        assert STALE_CAPTION not in [c.value for c in at.caption]
+        assert [c.value for c in live.caption].count(SCOPE_NOTE) == 1
+
+        _sign(at, "tc_", "José Núñez", "sign")
+        assert [w.value for w in at.tabs[1].warning] == [WORD_REFUSAL]
+        assert _statuses(at) == ["draft"]
+        _sign(at, "tc_")
+        signed = at.session_state["tc_signed_off"]
+        when = when_text(signed.signed_at)
+        assert _section(at) == ["#### Sign-off", SENTENCE, "{}&nbsp; {}".format(
+            _FINAL_CHIP, "Signed off by José Núñez on {}.".format(when))]
+        assert _result_chip(at) == _FINAL_CHIP
+        assert not _boxes(at, "tc_") and not _signoff_buttons(at, "tc_")
+        assert [d.proto.label for d in at.get("download_button")] == [
+            "Download data (CSV)", "Download the FINAL PDF"]
+        final = _pdf_text(downloads(at, "Download the FINAL PDF"))
+        assert re.search(r"· \d{4}-\d\d-\d\d FINAL: signed off by José Núñez on "
+                         + re.escape(when) + " CASES ", final)
+        (row,) = at.session_state["audit_runs"]
+        assert row["run_id"] == at.session_state["tc_result"]["run_id"]
+        assert row["status"] == "final" and row["analysis_type"] == "three-case"
+        assert row["signed_off_by"] == "José Núñez"
+        assert row["acknowledged_at_sign_off"] == [_NARROW]
+
+        # A key change alone keeps it; a new derive and run is a new DRAFT
+        at.text_input(key="byo_api_key").input("sk-ant-api03-" + "y" * 90).run()
+        assert _result_chip(at) == _FINAL_CHIP
+        next(b for b in at.button if b.label == "Run another analysis").click().run()
+        assert "#### Sign-off" not in [m.value for m in at.markdown]
+        _derive(at, ["IT Infrastructure (fixed cost)"])
+        assert _section(at) == ["#### Sign-off", SENTENCE, _DRAFT_CHIP,
+                                "Nothing is outstanding."]
+        assert _boxes(at, "tc_") == [("tc_reviewer", "José Núñez"), ("tc_sign", "")]
+        assert _statuses(at) == ["final", "draft"]
+        _sign(at, "tc_")
+        assert _statuses(at) == ["final", "final"]
+        assert at.session_state["audit_runs"][1]["acknowledged_at_sign_off"] == []
+
+    def test_5b_each_page_keeps_its_own_signoff(self, monkeypatch):
+        from streamlit.testing.v1 import AppTest
+        monkeypatch.setattr(anthropic, "Anthropic", _replying_anthropic())
+        at = AppTest.from_file(str(APP_DIR / "Home.py"), default_timeout=90).run()
+        at.text_input(key="byo_api_key").input(STAND_IN_KEY).run()
+        at.switch_page("pages/single_what_if.py").run()
+        _ask(at, "Cut marketing spend by 20 percent")
+        _sign(at, "swi_")
+        signed = _section(at)
+        # The pages share one session; the sign-off keys carry each page's prefix
+        at.switch_page("pages/three_case.py").run()
+        assert not at.exception
+        assert "#### Sign-off" not in [m.value for m in at.markdown]
+        assert "tc_signed_off" not in at.session_state
+        # Back on Single what-if its form starts empty, but the request last
+        # sent is kept: the signed result is neither stale nor a new DRAFT
+        at.switch_page("pages/single_what_if.py").run()
+        assert not at.exception
+        assert _section(at) == signed and _result_chip(at) == _FINAL_CHIP
+
+    def test_5b_names_print_safely(self, downloads, swi_result):
+        import html
+        from src.signoff import NAME_LIMIT, clean_name, pdf_name, when_text
+        at = swi_result
+        typed = "Zoë 李 <b>R&D</b>\x07" + "x" * 100
+        _sign(at, "swi_", typed)
+        signed = at.session_state["swi_signed_off"]
+        assert signed.name == clean_name(typed) and len(signed.name) == NAME_LIMIT
+        assert signed.name.startswith("Zoë 李 <b>R&D</b>xxx")
+        # On screen as typed, escaped; in the PDF as its fonts print it, never as markup
+        assert _section(at)[2] == "{}&nbsp; {}".format(
+            _FINAL_CHIP, html.escape(signed.line))
+        final = _flat(_pdf_text(downloads(at, "Download the FINAL PDF")))
+        status = "FINAL: signed off by {} on {}".format(
+            pdf_name(signed.name), when_text(signed.signed_at))
+        assert status.startswith("FINAL: signed off by Zoë ? <b>R&D</b>xxx")
+        assert _flat(status) + "THEREQUEST" in final
+        assert at.session_state["audit_runs"][0]["signed_off_by"] == signed.name
+
+    def test_5b_example_and_cli_pdfs_print_no_status_line(self):
+        import inspect
+        from src.signoff import DRAFT_PDF_LINE
+        from src.step6_explainer import (
+            _three_case_story, write_pdf, write_three_case_pdf,
+        )
+        from streamlit_app.lib.example_run import EXAMPLE
+        from streamlit_app.lib.web_emit import scenario_pdf_bytes, three_case_pdf_bytes
+        # Left at its default, the keyword prints nothing: the line is the
+        # only difference between the two
+        args = (EXAMPLE["request"], EXAMPLE["echo"], EXAMPLE["deltas"],
+                EXAMPLE["analysis"], EXAMPLE["held_constant"], EXAMPLE["explanation"],
+                [], EXAMPLE["takeaways"])
+        plain = _pdf_text(scenario_pdf_bytes(*args))
+        draft = _pdf_text(scenario_pdf_bytes(*args, status_line=DRAFT_PDF_LINE))
+        assert "signed off" not in plain
+        assert draft.replace(" " + DRAFT_PDF_LINE, "", 1) == plain != draft
+        spreads = {"COGS": {"pessimistic": 0.45, "realistic": 0.42,
+                            "optimistic": 0.39, "basis": "history",
+                            "mode": "data-derived", "narrow": True}}
+        rows = [{"line": EBIT_LABEL, "base": 500, "Pessimistic": 400,
+                 "Realistic": 500, "Optimistic": 600, "Pessimistic_delta": -100,
+                 "Realistic_delta": 0, "Optimistic_delta": 100}]
+        targs = (spreads, rows, "Text.", ["One."], "history")
+        plain = _pdf_text(three_case_pdf_bytes(*targs))
+        draft = _pdf_text(three_case_pdf_bytes(*targs, status_line=DRAFT_PDF_LINE))
+        assert "signed off" not in plain
+        assert draft.replace(" " + DRAFT_PDF_LINE, "", 1) == plain != draft
+        # The command-line reports take no status line at all
+        for builder in (write_pdf, write_three_case_pdf, _three_case_story):
+            assert "status_line" not in inspect.signature(builder).parameters
+
+    def test_5b_audit_rows(self):
+        from datetime import datetime, timezone
+        import streamlit as st
+        from src.signoff import sign_off
+        from streamlit_app.lib import audit
+        st.session_state["audit_runs"] = []
+        refused = audit.record_run("Refused request", "Refused before running", "refused")
+        run = audit.record_run("A request", "An echo", audit.DRAFT)
+        assert audit.signed_line(run) is None
+        signed, _ = sign_off("A. Reviewer", "SIGN",
+                             now=datetime(2026, 10, 21, 9, 5, tzinfo=timezone.utc))
+        row = audit.sign_run(run["run_id"], signed, ["One warning."])
+        assert row is run and row["status"] == audit.FINAL == "final"
+        assert row["signed_off_at"] == "2026-10-21T09:05:00+00:00"
+        assert row["acknowledged_at_sign_off"] == ["One warning."]
+        assert audit.signed_line(row) == ("Signed off by A. Reviewer on 21 October "
+                                          "2026 at 09:05 UTC.")
+        assert audit.sign_run("no such run", signed, []) is None
+        assert refused["status"] == "refused" and audit.signed_line(refused) is None
+        st.session_state["audit_runs"] = []
+
+    def test_5b_wording(self, monkeypatch):
+        from streamlit_app.lib.theme import BADGE
+        at, _ = _home_with_spies(monkeypatch)
+        values = [getattr(k, "value", None) for k in at.main.children.values()]
+        what = values[values.index("#### What it does") + 1]
+        promise = values[values.index("#### The governance promise") + 1]
+        assert what.splitlines()[-1] == (
+            "- Produces a PDF report, a DRAFT until a named reviewer signs it.")
+        assert promise.splitlines()[-1] == (
+            "- **The reviewer signs.** Nothing is final until a named reviewer reads "
+            "it and signs.")
+        built = (APP_DIR / "pages" / "how_its_built.py").read_text(encoding="utf-8")
+        assert '"stands unchanged. This live demo stops at a typed sign-off, kept for "' \
+            in built
+        assert "you review and sign off the result" in built
+        stale = ["stops at flagging for review", "no sign-off step",
+                 "nobody approves", "Nobody approves", "stays a draft for review",
+                 "A person reviews", "Download the report (PDF)",
+                 "Download report (PDF)"]
+        root = APP_DIR.parent
+        for path in [root / "README.md", *APP_DIR.rglob("*.py"),
+                     *(root / "src").glob("*.py")]:
+            text = path.read_text(encoding="utf-8")
+            assert not [s for s in stale if s in text], path.name
+        # The web has no approved or locked state to draw
+        assert set(BADGE) == {"draft", "refused", "caution"}

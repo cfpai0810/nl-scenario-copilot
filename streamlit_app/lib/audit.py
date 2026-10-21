@@ -10,17 +10,22 @@
 #
 # A web record is smaller than the CLI's (write_audit): the request, the
 # interpretation, a status, the deltas, what was held constant and the
-# tokens. It has no input fingerprint, no model id and no parsed values, and
-# a finished run stays a draft for review: the web has no sign-off step (the
-# CLI's is review.py).
+# tokens. It has no input fingerprint, no model id and no parsed values. A
+# finished run is a DRAFT until a named reviewer signs it off in the page's
+# Sign-off section (the rule is src/signoff.py); its row then becomes FINAL
+# and carries the sign-off: who, when, and the warnings shown at sign-off.
+# The CLI's own sign-off is review.py.
 # =============================================================================
 
 import streamlit as st
 from datetime import datetime, timezone
 
-# The status of a finished web run. Nobody approves anything on the web, so
-# the web never records "approved" or "locked".
-DRAFT = "draft"
+# The status of a finished web run: DRAFT, then FINAL once a named reviewer
+# signs it off (both from the shared rule). A request that did not run is
+# "refused" or "caution". The web never records "approved" or "locked": those
+# belong to the production lifecycle (approve, lock, re-issue), which this
+# demo does not run.
+from src.signoff import DRAFT, FINAL, SignOff
 
 
 def _ensure_store():
@@ -52,6 +57,28 @@ def record_run(raw_request, interpretation, status,
         run.update(extra)
     st.session_state["audit_runs"].append(run)
     return run
+
+
+def sign_run(run_id, signed, acknowledged):
+    """Record a sign-off on the finished run it was made for: the row's status
+    becomes FINAL and it gains signed.record(acknowledged), the name, the time
+    and the warnings shown at sign-off. Returns the row, or None when the run
+    is not in this session's list."""
+    _ensure_store()
+    for run in reversed(st.session_state["audit_runs"]):
+        if run["run_id"] == run_id:
+            run.update(signed.record(acknowledged))
+            return run
+    return None
+
+
+def signed_line(run):
+    """The sign-off line of a FINAL row, as the Sign-off section shows it, or
+    None for a row that is not signed off."""
+    if run.get("status") != FINAL:
+        return None
+    return SignOff(run["signed_off_by"],
+                   datetime.fromisoformat(run["signed_off_at"])).line
 
 
 def get_runs():
