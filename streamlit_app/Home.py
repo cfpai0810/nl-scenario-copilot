@@ -65,7 +65,7 @@ def _home_page():
         "principle holds the whole thing together, and it is the reason the "
         "output can be trusted: the language model reads your request and "
         "writes the explanation, a deterministic engine performs every "
-        "calculation, and a person approves the outcome. The diagram above is "
+        "calculation, and a person reviews the outcome. The diagram above is "
         "that principle in full. The intelligence sits at the edges: Python "
         "produces every reported figure, the way a spreadsheet would, and the "
         "model writes the wording around it. This version does not check the "

@@ -221,7 +221,7 @@ data/                            Five input files, reused from Project 2
 docs/                            Flow blueprint and sample outputs
 output/                          Generated files (gitignored)
 tests/
-  test_pipeline.py               270 tests
+  test_pipeline.py               271 tests
 ```
 
 ---
@@ -259,7 +259,7 @@ confirmation.
 
 ## Test suite
 
-270 tests, no real API calls:
+271 tests, no real API calls:
 
 ```bash
 pip install -r requirements-dev.txt

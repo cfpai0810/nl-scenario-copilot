@@ -51,7 +51,7 @@ def governance_flow_svg():
              "A change, stated", "in plain language", "the person", PERSON) +
         _arrow(172) +
         _box(200, 170, MODEL, MODEL_BG, "INTENT CONFIRMED",
-             "The model shows what it", "understood; you agree", "you approve", MODEL) +
+             "The model shows what it", "understood; you agree", "you confirm", MODEL) +
         _arrow(370) +
         _box(398, 158, ENGINE, ENGINE_BG, "CALCULATION",
              "Deterministic code", "runs every figure", "no model here", ENGINE) +
