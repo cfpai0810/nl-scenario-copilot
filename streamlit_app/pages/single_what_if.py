@@ -8,8 +8,8 @@
 # stored in session state and rendered from there, so a rerun (e.g. clicking
 # the PDF download) never loses the result. Each finished, refused or
 # ambiguous run is written to the per-session audit record (a confirm-step
-# Rephrase records nothing). A keyless example tab shows a full worked result
-# with no API key.
+# Rephrase records nothing). The first tab, open on arrival, shows a full
+# worked result with no API key.
 #
 # All heavy logic is the existing, tested pipeline (src/step3..step6). This
 # page only orchestrates it non-blocking and renders; it never recomputes.
@@ -26,7 +26,9 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from streamlit_app.lib.theme import inject_css, badge_html
+from streamlit_app.lib.theme import (
+    inject_css, badge_html, header_html, status_chip_html,
+)
 from streamlit_app.lib.key_gate import render_key_gate
 from streamlit_app.lib.errors import friendly_message
 from streamlit_app.lib import audit
@@ -50,11 +52,10 @@ EXAMPLES = {
         "Cut marketing spend by 20 percent and delay hiring by one month",
 }
 
-st.markdown("### Single what-if")
-st.write(
-    "Describe one change to the plan in plain language. The model shows you "
-    "how it understood the request, you confirm it, and only then is anything "
-    "calculated.")
+st.markdown(header_html(
+    "Single what-if",
+    "One change to the plan in plain language, from your sentence to the "
+    "forecast and its explanation."), unsafe_allow_html=True)
 
 client = render_key_gate()
 
@@ -88,12 +89,8 @@ def _reset():
     st.session_state.pop("permonth_editor_uni", None)
 
 
-st.write("")
-# Home's "See the worked example" button opens this page on the example tab.
-_open_example = st.session_state.pop("swi_open_example", False)
-tab_live, tab_example = st.tabs(
-    ["Run it yourself", "View a worked example"],
-    default="View a worked example" if _open_example else None)
+# The worked example comes first and is open on arrival, as in Project 6.
+tab_example, tab_live = st.tabs(["View a worked example", "Run it yourself"])
 
 # ── Keyless worked example ───────────────────────────────────────────────────
 with tab_example:
@@ -101,7 +98,7 @@ with tab_example:
     st.markdown(f"**Request:** {EXAMPLE['request']}")
     st.markdown(
         f'**The model understood:** {EXAMPLE["echo"]} '
-        + badge_html(audit.DRAFT), unsafe_allow_html=True)
+        + status_chip_html(audit.DRAFT), unsafe_allow_html=True)
 
     e = EXAMPLE["ebit"]
     c1, c2, c3 = st.columns(3)
@@ -148,6 +145,10 @@ with tab_example:
 
 # ── Live path ────────────────────────────────────────────────────────────────
 with tab_live:
+    st.write(
+        "Describe one change to the plan in plain language. The model shows you "
+        "how it understood the request, you confirm it, and only then is anything "
+        "calculated.")
     if client is None:
         st.info(
             "Paste your Anthropic API key in the sidebar to run your own "
@@ -475,7 +476,7 @@ with tab_live:
     if st.session_state.phase == "result" and st.session_state.result:
         res = st.session_state.result
         st.markdown("---")
-        st.markdown(badge_html(audit.DRAFT), unsafe_allow_html=True)
+        st.markdown(status_chip_html(audit.DRAFT), unsafe_allow_html=True)
 
         ebit_row = next((d for d in res["deltas"]
                          if d["line"] == EBIT_LABEL), None)
@@ -631,7 +632,8 @@ if runs:
                "permanent record.")
     for r in runs:
         cols = st.columns([2, 5, 2])
-        cols[0].markdown(badge_html(r["status"]), unsafe_allow_html=True)
+        cols[0].markdown(status_chip_html(r["status"]) if r["status"] == audit.DRAFT
+                         else badge_html(r["status"]), unsafe_allow_html=True)
         cols[1].write(r["raw_request"])
         if r.get("ebit_delta") is not None:
             cols[2].write("EBIT {}".format(signed_money(r["ebit_delta"])))

@@ -1,0 +1,10 @@
+# Streamlit theme: controls in the series navy, never the default red. Colour
+# is kept for status (the DRAFT and FINAL chips) and for meaning (flags,
+# arrows); lib/theme.py holds the palette, and a test checks this value
+# matches DARK_BLUE.
+[theme]
+primaryColor = "#1A3A5C"
+
+# Visitors see the app, not the developer menu or the Deploy button.
+[client]
+toolbarMode = "minimal"

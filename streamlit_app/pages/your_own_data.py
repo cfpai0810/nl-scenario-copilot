@@ -15,11 +15,14 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from streamlit_app.lib.theme import inject_css
+from streamlit_app.lib.theme import inject_css, header_html
 
 st.markdown(inject_css(), unsafe_allow_html=True)
 
-st.markdown("### Your own data")
+st.markdown(header_html(
+    "Your own data",
+    "The five data files the model reads, and how to run the project on "
+    "your own figures."), unsafe_allow_html=True)
 
 _doc_path = ROOT / "docs" / "bring_your_own_data.md"
 _doc = _doc_path.read_text(encoding="utf-8")

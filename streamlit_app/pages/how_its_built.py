@@ -18,14 +18,21 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from streamlit_app.lib.theme import inject_css
+from streamlit_app.lib.theme import inject_css, header_html
 from streamlit_app.lib.governance_flow import governance_flow_svg
 from streamlit_app.lib.governance_lifecycle import governance_lifecycle_svg
 from streamlit_app.lib.pipeline_flow import pipeline_flow_svg
 
 st.markdown(inject_css(), unsafe_allow_html=True)
 
-st.markdown("### How it's built")
+st.markdown(header_html(
+    "How it's built",
+    "Why the figures can be trusted, then the pipeline, the AI boundary and "
+    "the tests."), unsafe_allow_html=True)
+
+# The governance flow, the thesis of the tool, first (it was on Home).
+components.html(governance_flow_svg(), height=300, scrolling=False)
+
 st.write(
     "This tool was built on one principle: an AI system that touches financial "
     "numbers has to earn trust before it earns time. The sections below explain "
@@ -48,7 +55,6 @@ st.write(
 
 st.markdown("**The work happens in separated layers, and you open and close "
             "every one.**")
-components.html(governance_flow_svg(), height=300, scrolling=False)
 st.write(
     "You describe a change and confirm the tool's interpretation before anything "
     "runs; Python then computes on a copy of the plan, so the base is never "

@@ -2950,7 +2950,8 @@ class TestUx1KeyGateExpander:
 
 
 class TestUx2WorkedExampleButton:
-    """Home's button under the banner opens the worked example (UX2)."""
+    """Home's button under the banner opens the worked example (UX2). Since
+    Step 5a the example is the first tab, so the button only switches page."""
 
     def test_ux2_button_switches_to_single_what_if_example_tab(self, monkeypatch):
         from streamlit.testing.v1 import AppTest
@@ -2965,12 +2966,14 @@ class TestUx2WorkedExampleButton:
 
         at.main.button[0].click().run()
         assert not at.exception
-        assert any(m.value == "### Single what-if" for m in at.markdown)
+        assert any(m.value.startswith('<div class="sc-header"><h1>Single what-if</h1>')
+                   for m in at.markdown)
         tab_sets = _blocks_of_type(at.main, "tab_container")
         assert len(tab_sets) == 1
         assert [t.label for t in at.tabs] == \
-            ["Run it yourself", "View a worked example"]
-        assert tab_sets[0].proto.tab_container.default_tab_index == 1
+            ["View a worked example", "Run it yourself"]
+        assert tab_sets[0].proto.tab_container.default_tab_index == 0
+        assert "swi_open_example" not in at.session_state
         assert any(m.label == "Change" for m in at.metric)
         assert at.session_state["live_client"] is None
 
@@ -2980,6 +2983,7 @@ class TestUx2WorkedExampleButton:
                                default_timeout=60).run()
         tab_sets = _blocks_of_type(at.main, "tab_container")
         assert tab_sets[0].proto.tab_container.default_tab_index == 0
+        assert at.tabs[0].label == "View a worked example"
 
 
 class TestUx4TabularFigures:
@@ -3041,12 +3045,15 @@ def _replying_anthropic():
 
 class TestItem31DraftForReview:
     """Nobody approves anything on the web, so the worked example and every
-    finished web run read "Draft for review", never "Approved" (item 31)."""
+    finished web run carry the DRAFT chip, never "Approved" (item 31). Since
+    Step 5a the chip is the series' amber DRAFT, not the blue badge."""
 
-    @staticmethod
-    def _badges(at):
+    CHIP = '<span class="sc-status draft">DRAFT</span>'
+
+    @classmethod
+    def _badges(cls, at):
         return [m.value for m in at.markdown
-                if '<span class="sc-badge"' in m.value]
+                if '<span class="sc-badge"' in m.value or cls.CHIP in m.value]
 
     def test_item31_web_runs_are_drafts_for_review(self, monkeypatch):
         from streamlit.testing.v1 import AppTest
@@ -3055,7 +3062,7 @@ class TestItem31DraftForReview:
         # Single what-if: the worked example, then a finished live run.
         at = AppTest.from_file(str(APP_DIR / "pages" / "single_what_if.py"),
                                default_timeout=60).run()
-        assert [">DRAFT FOR REVIEW<" in b for b in self._badges(at)] == [True]
+        assert [self.CHIP in b for b in self._badges(at)] == [True]
         at.text_input(key="byo_api_key").input(STAND_IN_KEY).run()
         next(t for t in at.text_input if t.label == "Your what-if").input(
             "Cut marketing spend by 20 percent")
@@ -3066,7 +3073,7 @@ class TestItem31DraftForReview:
         assert [r["status"] for r in at.session_state["audit_runs"]] == ["draft"]
         badges = self._badges(at)
         assert len(badges) == 3   # the example, the result, the audit list
-        assert all(">DRAFT FOR REVIEW<" in b for b in badges)
+        assert all(self.CHIP in b for b in badges)
 
         # Three-case: a finished live run.
         at = AppTest.from_file(str(APP_DIR / "pages" / "three_case.py"),
@@ -3080,16 +3087,16 @@ class TestItem31DraftForReview:
         assert [r["status"] for r in at.session_state["audit_runs"]] == ["draft"]
         badges = self._badges(at)
         assert len(badges) == 2   # the result, the audit list
-        assert all(">DRAFT FOR REVIEW<" in b for b in badges)
+        assert all(self.CHIP in b for b in badges)
 
         # No web page sets the approved status any more.
         for page in ("single_what_if.py", "three_case.py"):
             source = (APP_DIR / "pages" / page).read_text(encoding="utf-8")
             assert '"approved"' not in source
         from streamlit_app.lib import audit
-        from streamlit_app.lib.theme import badge_html
+        from streamlit_app.lib.theme import status_chip_html
         assert audit.DRAFT == "draft"
-        assert ">DRAFT FOR REVIEW</span>" in badge_html(audit.DRAFT)
+        assert status_chip_html(audit.DRAFT) == self.CHIP
 
 
 class TestDependencies:
@@ -3136,3 +3143,180 @@ class TestDependencies:
         text = (Path(__file__).resolve().parent.parent / "requirements.txt").read_text(
             encoding="utf-8-sig")
         assert "certifi==2026.10.19" in text.split()
+
+
+# =============================================================================
+# Step 5a: Project 6's look and layout, in the series navy (V1 to V5)
+# =============================================================================
+
+def _home_with_spies(monkeypatch):
+    """Run Home and record the pages it hands to st.navigation and the
+    arguments it gives st.set_page_config."""
+    import streamlit
+    from streamlit.testing.v1 import AppTest
+    seen = {}
+    navigation, set_page_config = streamlit.navigation, streamlit.set_page_config
+
+    def navigation_spy(pages, *args, **kwargs):
+        seen["pages"] = list(pages)
+        return navigation(pages, *args, **kwargs)
+
+    def page_config_spy(*args, **kwargs):
+        seen["page_config"] = kwargs
+        return set_page_config(*args, **kwargs)
+
+    monkeypatch.setattr(streamlit, "navigation", navigation_spy)
+    monkeypatch.setattr(streamlit, "set_page_config", page_config_spy)
+    monkeypatch.setattr(anthropic, "Anthropic", _stand_in_anthropic())
+    at = AppTest.from_file(str(APP_DIR / "Home.py"), default_timeout=60).run()
+    assert not at.exception
+    return at, seen
+
+
+def _main_blocks(at):
+    """The blocks of the main area in page order, and the banner's place."""
+    kids = list(at.main.children.values())
+    banner = next(i for i, k in enumerate(kids) if getattr(k, "type", "") ==
+                  "markdown" and k.value.startswith('<div class="sc-header">'))
+    return kids, banner
+
+
+class TestStep5aLook:
+    """Every page in the series pattern: navy controls, one banner, Home in
+    three blocks, the addresses kept, the worked example first (V1 to V5)."""
+
+    def test_v1_primary_colour_is_the_navy(self):
+        import tomllib
+        from streamlit_app.lib.theme import DARK_BLUE
+        config = tomllib.loads(
+            (APP_DIR.parent / ".streamlit" / "config.toml").read_text(encoding="utf-8"))
+        assert config["theme"]["primaryColor"] == DARK_BLUE == "#1A3A5C"
+        assert config["client"]["toolbarMode"] == "minimal"
+
+    @pytest.mark.parametrize("page,title", [
+        ("Home.py", "Scenario Modelling Copilot"),
+        ("pages/how_the_model_works.py", "How the model works"),
+        ("pages/single_what_if.py", "Single what-if"),
+        ("pages/three_case.py", "Three-case analysis"),
+        ("pages/your_own_data.py", "Your own data"),
+        ("pages/how_its_built.py", "How it's built"),
+    ])
+    def test_v2_every_page_has_a_banner(self, page, title, monkeypatch):
+        import html
+        from streamlit.testing.v1 import AppTest
+        monkeypatch.setattr(anthropic, "Anthropic", _stand_in_anthropic())
+        at = AppTest.from_file(str(APP_DIR / page), default_timeout=60).run()
+        assert not at.exception
+        banners = [m.value for m in at.main.markdown if 'class="sc-header"' in m.value]
+        assert len(banners) == 1
+        assert banners[0].startswith(
+            '<div class="sc-header"><h1>{}</h1><p>'.format(html.escape(title)))
+        # The banner replaces the old plain page heading
+        assert not any(m.value.startswith("### ") for m in at.main.markdown)
+
+    def test_v2_draft_and_final_chips(self):
+        from streamlit_app.lib.theme import (
+            status_chip_html, inject_css, DRAFT_CHIP, FINAL_CHIP,
+        )
+        assert status_chip_html("draft") == '<span class="sc-status draft">DRAFT</span>'
+        assert status_chip_html("final") == '<span class="sc-status final">FINAL</span>'
+        assert status_chip_html("refused") == status_chip_html("draft")
+        assert (DRAFT_CHIP, FINAL_CHIP) == ("#B45F06", "#2E6B3F")
+        css = inject_css()
+        assert ".sc-status.draft { background: #B45F06; }" in css
+        assert ".sc-status.final { background: #2E6B3F; }" in css
+        # The blue "draft for review" badge is gone: a run's DRAFT is the chip
+        for path in APP_DIR.rglob("*.py"):
+            source = path.read_text(encoding="utf-8")
+            assert "badge_html(audit.DRAFT)" not in source, path
+            assert "BADGE_LABEL" not in source, path
+
+    def test_v3_home_blocks_and_page_links(self, monkeypatch):
+        at, seen = _home_with_spies(monkeypatch)
+        kids, banner = _main_blocks(at)
+        assert getattr(kids[banner + 1], "label", None) == "See the worked example"
+        values = [getattr(k, "value", None) for k in kids]
+        headings = [v for v in values if isinstance(v, str) and v.startswith("#### ")]
+        assert headings == ["#### What it does", "#### The governance promise",
+                            "#### Pages"]
+        promise = values[values.index("#### The governance promise") + 1]
+        assert [line.split("**")[1] for line in promise.splitlines()] == [
+            "The model reads.", "Python calculates.", "The model explains.",
+            "A person reviews."]
+        assert promise.endswith("- **A person reviews.** This version has no sign-off "
+                                "step on the web, so nothing here is signed or final.")
+        # One link per page except Home, in the navigation order, each with
+        # the page's own icon and "Title: what it is"
+        links = at.get("page_link")
+        pages = seen["pages"][1:]
+        assert [link.proto.page for link in links] == [p.url_path for p in pages]
+        for link, page in zip(links, pages):
+            assert link.proto.label.startswith(page.title + ": ")
+            assert link.proto.icon == page.icon
+        # The links wrap rather than clip on a phone, as in Project 6
+        from streamlit_app.lib.theme import inject_css
+        assert ('[data-testid="stPageLink-NavLink"], [data-testid="stPageLink-NavLink"] * {\n'
+                '        white-space: normal !important;') in inject_css()
+        # Under the links: the key explainer, closed, then the one caption
+        after = kids[max(i for i, k in enumerate(kids)
+                         if getattr(k, "type", "") == "page_link") + 1:]
+        assert after[0].type == "expander"
+        assert after[0].label == "Using your own API key"
+        assert after[0].proto.expanded is False
+        assert "1.1 US cents" in " ".join(m.value for m in after[0].markdown)
+        assert [k.type for k in after[1:]] == ["divider", "caption"]
+        assert after[2].value == ("Sample data only: Valencia Operations is a "
+                                  "fictional company. All figures are illustrative.")
+        # Gone from Home: the green data box and the diagram, which is now
+        # the first thing on How it's built
+        assert not at.success and not at.warning
+        assert not at.get("iframe")
+        from streamlit.testing.v1 import AppTest
+        from streamlit_app.lib.governance_flow import governance_flow_svg
+        built = AppTest.from_file(str(APP_DIR / "pages" / "how_its_built.py"),
+                                  default_timeout=60).run()
+        kids, banner = _main_blocks(built)
+        assert kids[banner + 1].type == "iframe"
+        assert kids[banner + 1].proto.srcdoc == governance_flow_svg()
+        assert len(built.get("iframe")) == 3   # the flow, the lifecycle, the pipeline
+
+    def test_v4_titles_are_sentence_case_and_urls_unchanged(self, monkeypatch):
+        _, seen = _home_with_spies(monkeypatch)
+        # Every page in the navigation order, with the address it had before
+        # Step 5a: posts and READMEs link to these.
+        assert [(p.title, p.url_path) for p in seen["pages"]] == [
+            ("Home", ""),
+            ("How the model works", "how_the_model_works"),
+            ("Single what-if", "single_what_if"),
+            ("Three-case", "three_case"),
+            ("Your own data", "your_own_data"),
+            ("How it's built", "how_its_built"),
+        ]
+        for page in seen["pages"]:
+            assert all(word == word.lower() for word in page.title.split()[1:]), \
+                page.title
+
+    @pytest.mark.parametrize("page", ["single_what_if.py", "three_case.py"])
+    def test_v5_example_tab_first_and_no_open_example_flag(self, page):
+        from streamlit.testing.v1 import AppTest
+        at = AppTest.from_file(str(APP_DIR / "pages" / page),
+                               default_timeout=60).run()
+        assert not at.exception
+        assert [t.label for t in at.tabs] == ["View a worked example", "Run it yourself"]
+        tab_sets = _blocks_of_type(at.main, "tab_container")
+        assert len(tab_sets) == 1
+        assert tab_sets[0].proto.tab_container.default_tab_index == 0
+        # The tab bar sits directly under the banner
+        kids, banner = _main_blocks(at)
+        assert kids[banner + 1].type == "tab_container"
+        # The Home button only switches page: no session flag, no default tab
+        for path in APP_DIR.rglob("*.py"):
+            source = path.read_text(encoding="utf-8")
+            assert "_open_example" not in source, path
+            assert "OPEN_EXAMPLE" not in source, path
+        assert "default=" not in (APP_DIR / "pages" / page).read_text(encoding="utf-8")
+
+    def test_v5_page_icon_is_the_tool_page_icon(self, monkeypatch):
+        _, seen = _home_with_spies(monkeypatch)
+        tool = next(p for p in seen["pages"] if p.title == "Single what-if")
+        assert seen["page_config"]["page_icon"] == tool.icon == ":material/tune:"

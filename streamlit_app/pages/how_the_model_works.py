@@ -16,12 +16,15 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from streamlit_app.lib.theme import inject_css, DARK_BLUE, MUTED
+from streamlit_app.lib.theme import inject_css, header_html, DARK_BLUE, MUTED
 from config import CURRENCY_CODE
 
 st.markdown(inject_css(), unsafe_allow_html=True)
 
-st.markdown("### How the model works")
+st.markdown(header_html(
+    "How the model works",
+    "The driver-based forecast, line by line, and how to phrase a request "
+    "the tool can run."), unsafe_allow_html=True)
 st.write(
     "The forecast is a driver-based model, which means every line of the "
     "profit and loss is produced by a specific lever rather than typed in by "
