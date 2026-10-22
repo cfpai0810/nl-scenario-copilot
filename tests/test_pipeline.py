@@ -3003,6 +3003,11 @@ class TestUx4TabularFigures:
                            if sel.startswith("html, body"))
         assert '"cv05" 1' in global_rule
         assert "tnum" not in global_rule
+        # Lists, bold, italics and captions in Inter too, as Project 6's
+        # theme sets them (5b fix round)
+        global_sel = next(sel for sel, body in self._rules()
+                          if sel.startswith("html, body"))
+        assert global_sel.endswith("th, ul, ol, li, strong, em, caption")
 
     def test_ux4_numeric_rule_lists_tables_and_metrics(self):
         numeric = [(sel, body) for sel, body in self._rules() if "tnum" in body]

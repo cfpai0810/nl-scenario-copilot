@@ -231,7 +231,7 @@ docs/                            Flow blueprint and sample outputs
 output/                          Generated files (gitignored)
 tests/
   test_pipeline.py               299 tests
-  test_signoff.py                8 tests: the sign-off rule
+  test_signoff.py                9 tests: the sign-off rule
 ```
 
 ---
@@ -269,7 +269,7 @@ confirmation.
 
 ## Test suite
 
-307 tests, no real API calls:
+308 tests, no real API calls:
 
 ```bash
 pip install -r requirements-dev.txt

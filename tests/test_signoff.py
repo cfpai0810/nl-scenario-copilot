@@ -6,8 +6,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.signoff import (ALREADY_SIGNED, DRAFT_PDF_LINE, NAME_LIMIT,  # noqa: E402
-                         NAME_REFUSAL, SIGN_WORD, WORD_REFUSAL, clean_name, is_sign_word,
-                         pdf_status_line, sign_off)
+                         NAME_REFUSAL, SCOPE_NOTE, SIGN_WORD, WORD_REFUSAL, clean_name,
+                         is_sign_word, pdf_status_line, sign_off)
 
 WHEN = datetime(2026, 10, 21, 9, 5, tzinfo=timezone.utc)
 
@@ -50,3 +50,8 @@ class TestSignOffRule:
         signed, _ = sign_off("José Núñez", SIGN_WORD, now=WHEN)
         assert pdf_status_line(signed) == ("FINAL: signed off by José Núñez on "
                                            "21 October 2026 at 09:05 UTC")
+
+    def test_the_scope_note_claims_only_what_is_kept(self):
+        assert SCOPE_NOTE == ("The name and time are kept for this session and go into "
+                              "this PDF. They are not stored on the server, and the name "
+                              "is not verified.")

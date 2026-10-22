@@ -4,7 +4,7 @@
 # A visual walkthrough of the full governance lifecycle as intended for
 # production deployment. This is a documentation diagram only: it does not
 # change any app behaviour, store anything, or add persistence. The diagram
-# shows where the live demo stops (at flag-for-review) and how the production
+# shows where the live demo stops (at a typed sign-off) and how the production
 # model continues (approve, lock, read only, re-issue).
 # =============================================================================
 
@@ -100,8 +100,8 @@ def governance_lifecycle_svg():
         stroke-width="1" stroke-dasharray="3 4"/>
   <text x="460" y="256" text-anchor="middle" font-family="'Inter', sans-serif"
         font-size="11" fill="{MUTED}">
-    The live demo stops at review. The stages beyond show the production
-    model this design is built towards.
+    The live demo stops at a typed sign-off. The stages beyond show the
+    production model this design is built towards.
   </text>
 
   <g font-family="'Inter', sans-serif" font-size="11">

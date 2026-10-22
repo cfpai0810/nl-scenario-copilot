@@ -24,7 +24,7 @@ ALREADY_SIGNED = "This result is already signed off. A new run starts a new DRAF
 STALE_CAPTION = "Sign-off waits for a run made from the inputs as they now stand."
 WORD_LABEL = "Type SIGN to sign off"
 WORD_HELP = "Exactly SIGN, in capitals. Anything else leaves this a DRAFT."
-SCOPE_NOTE = ("The name and time go into this PDF and this session's audit list. They are "
+SCOPE_NOTE = ("The name and time are kept for this session and go into this PDF. They are "
               "not stored on the server, and the name is not verified.")
 DRAFT_PDF_LINE = "DRAFT: not signed off"
 
