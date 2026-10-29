@@ -1,5 +1,5 @@
 # =============================================================================
-# pages/how_its_built.py: "How it's built" (trust story, then technical depth)
+# views/how_its_built.py: "How it's built" (trust story, then technical depth)
 # =============================================================================
 # Two audiences on one page. Part 1 is for a finance leader: why an AI-assisted
 # forecasting tool can be trusted (the three-layer model, the confirm gate, the

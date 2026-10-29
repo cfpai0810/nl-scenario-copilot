@@ -1,5 +1,5 @@
 # =============================================================================
-# pages/single_what_if.py - the single what-if tool (Stage 3)
+# views/single_what_if.py: the single what-if tool (Stage 3)
 # =============================================================================
 # Two phases, matching the governance diagram:
 #   Phase A: parse + validate + echo_back -> show the INTENT card, then STOP.

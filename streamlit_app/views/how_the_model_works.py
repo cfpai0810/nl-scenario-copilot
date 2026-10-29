@@ -1,5 +1,5 @@
 # =============================================================================
-# pages/how_the_model_works.py: driver reference for the forecast model
+# views/how_the_model_works.py: driver reference for the forecast model
 # =============================================================================
 # Explains how each P&L line is calculated, what driver controls it, and what
 # kinds of changes work. No API key needed. This page answers the question

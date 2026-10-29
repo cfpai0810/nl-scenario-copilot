@@ -1,5 +1,5 @@
 # =============================================================================
-# pages/three_case.py - pessimistic / realistic / optimistic analysis
+# views/three_case.py: pessimistic / realistic / optimistic analysis
 # =============================================================================
 # Structured controls: pick drivers, derive a spread, optionally edit it,
 # confirm, and run. Reuses the tested step7/step8/step6 mechanics - the page

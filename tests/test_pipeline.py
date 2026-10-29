@@ -2706,7 +2706,7 @@ class TestItem17ModelFailures:
         from streamlit.testing.v1 import AppTest
         monkeypatch.setattr(anthropic, "Anthropic", _stand_in_anthropic(
             _sdk_error(anthropic.AuthenticationError, 401)))
-        at = AppTest.from_file(str(APP_DIR / "pages" / "single_what_if.py"),
+        at = AppTest.from_file(str(APP_DIR / "views" / "single_what_if.py"),
                                default_timeout=60).run()
         self._enter_key(at)
         next(t for t in at.text_input if t.label == "Your what-if").input(
@@ -2719,7 +2719,7 @@ class TestItem17ModelFailures:
         from streamlit.testing.v1 import AppTest
         monkeypatch.setattr(anthropic, "Anthropic", _stand_in_anthropic(
             _sdk_error(anthropic.AuthenticationError, 401)))
-        at = AppTest.from_file(str(APP_DIR / "pages" / "three_case.py"),
+        at = AppTest.from_file(str(APP_DIR / "views" / "three_case.py"),
                                default_timeout=60).run()
         self._enter_key(at)
         at.multiselect[0].set_value(["COGS margin"]).run()
@@ -2766,7 +2766,7 @@ class TestItem2And4KeyGate:
         assert at.session_state["live_client"] is not None
         stand_in.built.clear()
 
-        at.switch_page("pages/single_what_if.py").run()
+        at.switch_page("views/single_what_if.py").run()
         assert not at.exception
         assert at.text_input(key="byo_api_key").value == STAND_IN_KEY
         assert stand_in.built == [STAND_IN_KEY]
@@ -2827,7 +2827,7 @@ class TestItem7SignedFigures:
 
     def test_item58_three_case_example_loss_is_a_red_down_arrow(self):
         from streamlit.testing.v1 import AppTest
-        at = AppTest.from_file(str(APP_DIR / "pages" / "three_case.py"),
+        at = AppTest.from_file(str(APP_DIR / "views" / "three_case.py"),
                                default_timeout=60).run()
         metrics = {m.label: m for m in at.metric}
         pessimistic, optimistic = metrics["Pessimistic"], metrics["Optimistic"]
@@ -2838,7 +2838,7 @@ class TestItem7SignedFigures:
 
     def test_item7_single_what_if_example_change_reads_signed(self):
         from streamlit.testing.v1 import AppTest
-        at = AppTest.from_file(str(APP_DIR / "pages" / "single_what_if.py"),
+        at = AppTest.from_file(str(APP_DIR / "views" / "single_what_if.py"),
                                default_timeout=60).run()
         change = next(m for m in at.metric if m.label == "Change")
         assert change.value == "+€76,800"
@@ -2979,7 +2979,7 @@ class TestUx2WorkedExampleButton:
 
     def test_ux2_sidebar_link_still_opens_the_first_tab(self):
         from streamlit.testing.v1 import AppTest
-        at = AppTest.from_file(str(APP_DIR / "pages" / "single_what_if.py"),
+        at = AppTest.from_file(str(APP_DIR / "views" / "single_what_if.py"),
                                default_timeout=60).run()
         tab_sets = _blocks_of_type(at.main, "tab_container")
         assert tab_sets[0].proto.tab_container.default_tab_index == 0
@@ -3066,7 +3066,7 @@ class TestItem31DraftForReview:
         monkeypatch.setattr(anthropic, "Anthropic", _replying_anthropic())
 
         # Single what-if: the worked example, then a finished live run.
-        at = AppTest.from_file(str(APP_DIR / "pages" / "single_what_if.py"),
+        at = AppTest.from_file(str(APP_DIR / "views" / "single_what_if.py"),
                                default_timeout=60).run()
         assert [self.CHIP in b for b in self._badges(at)] == [True]
         at.text_input(key="byo_api_key").input(STAND_IN_KEY).run()
@@ -3083,7 +3083,7 @@ class TestItem31DraftForReview:
         assert all(self.CHIP in b for b in badges)
 
         # Three-case: a finished live run.
-        at = AppTest.from_file(str(APP_DIR / "pages" / "three_case.py"),
+        at = AppTest.from_file(str(APP_DIR / "views" / "three_case.py"),
                                default_timeout=60).run()
         at.text_input(key="byo_api_key").input(STAND_IN_KEY).run()
         at.multiselect[0].set_value(["COGS margin"]).run()
@@ -3098,7 +3098,7 @@ class TestItem31DraftForReview:
 
         # No web page sets the approved status any more.
         for page in ("single_what_if.py", "three_case.py"):
-            source = (APP_DIR / "pages" / page).read_text(encoding="utf-8")
+            source = (APP_DIR / "views" / page).read_text(encoding="utf-8")
             assert '"approved"' not in source
         from streamlit_app.lib import audit
         from streamlit_app.lib.theme import status_chip_html
@@ -3202,11 +3202,11 @@ class TestStep5aLook:
 
     @pytest.mark.parametrize("page,title", [
         ("Home.py", "Scenario Modelling Copilot"),
-        ("pages/how_the_model_works.py", "How the model works"),
-        ("pages/single_what_if.py", "Single what-if"),
-        ("pages/three_case.py", "Three-case analysis"),
-        ("pages/your_own_data.py", "Your own data"),
-        ("pages/how_its_built.py", "How it's built"),
+        ("views/how_the_model_works.py", "How the model works"),
+        ("views/single_what_if.py", "Single what-if"),
+        ("views/three_case.py", "Three-case analysis"),
+        ("views/your_own_data.py", "Your own data"),
+        ("views/how_its_built.py", "How it's built"),
     ])
     def test_v2_every_page_has_a_banner(self, page, title, monkeypatch):
         import html
@@ -3281,7 +3281,7 @@ class TestStep5aLook:
         assert not at.get("iframe")
         from streamlit.testing.v1 import AppTest
         from streamlit_app.lib.governance_flow import governance_flow_svg
-        built = AppTest.from_file(str(APP_DIR / "pages" / "how_its_built.py"),
+        built = AppTest.from_file(str(APP_DIR / "views" / "how_its_built.py"),
                                   default_timeout=60).run()
         kids, banner = _main_blocks(built)
         assert kids[banner + 1].type == "iframe"
@@ -3307,7 +3307,7 @@ class TestStep5aLook:
     @pytest.mark.parametrize("page", ["single_what_if.py", "three_case.py"])
     def test_v5_example_tab_first_and_no_open_example_flag(self, page):
         from streamlit.testing.v1 import AppTest
-        at = AppTest.from_file(str(APP_DIR / "pages" / page),
+        at = AppTest.from_file(str(APP_DIR / "views" / page),
                                default_timeout=60).run()
         assert not at.exception
         assert [t.label for t in at.tabs] == ["View a worked example", "Run it yourself"]
@@ -3322,7 +3322,7 @@ class TestStep5aLook:
             source = path.read_text(encoding="utf-8")
             assert "_open_example" not in source, path
             assert "OPEN_EXAMPLE" not in source, path
-        assert "default=" not in (APP_DIR / "pages" / page).read_text(encoding="utf-8")
+        assert "default=" not in (APP_DIR / "views" / page).read_text(encoding="utf-8")
 
     def test_v5_page_icon_is_the_tool_page_icon(self, monkeypatch):
         _, seen = _home_with_spies(monkeypatch)
@@ -3334,8 +3334,8 @@ class TestStep5aLook:
 # Step 5b: the sign-off section, after Project 6 (both tool pages)
 # =============================================================================
 
-SWI_PAGE = APP_DIR / "pages" / "single_what_if.py"
-TC_PAGE = APP_DIR / "pages" / "three_case.py"
+SWI_PAGE = APP_DIR / "views" / "single_what_if.py"
+TC_PAGE = APP_DIR / "views" / "three_case.py"
 _DRAFT_CHIP = '<span class="sc-status draft">DRAFT</span>'
 _FINAL_CHIP = '<span class="sc-status final">FINAL</span>'
 # The scenario engine's own warning for a marketing change (the stand-in's parse)
@@ -3736,18 +3736,18 @@ class TestStep5bSignOff:
         monkeypatch.setattr(anthropic, "Anthropic", _replying_anthropic())
         at = AppTest.from_file(str(APP_DIR / "Home.py"), default_timeout=90).run()
         at.text_input(key="byo_api_key").input(STAND_IN_KEY).run()
-        at.switch_page("pages/single_what_if.py").run()
+        at.switch_page("views/single_what_if.py").run()
         _ask(at, "Cut marketing spend by 20 percent")
         _sign(at, "swi_")
         signed = _section(at)
         # The pages share one session; the sign-off keys carry each page's prefix
-        at.switch_page("pages/three_case.py").run()
+        at.switch_page("views/three_case.py").run()
         assert not at.exception
         assert "#### Sign-off" not in [m.value for m in at.markdown]
         assert "tc_signed_off" not in at.session_state
         # Back on Single what-if its form starts empty, but the request last
         # sent is kept: the signed result is neither stale nor a new DRAFT
-        at.switch_page("pages/single_what_if.py").run()
+        at.switch_page("views/single_what_if.py").run()
         assert not at.exception
         assert _section(at) == signed and _result_chip(at) == _FINAL_CHIP
 
@@ -3834,7 +3834,7 @@ class TestStep5bSignOff:
         assert promise.splitlines()[-1] == (
             "- **The reviewer signs.** Nothing is final until a named reviewer reads "
             "it and signs.")
-        built = (APP_DIR / "pages" / "how_its_built.py").read_text(encoding="utf-8")
+        built = (APP_DIR / "views" / "how_its_built.py").read_text(encoding="utf-8")
         assert '"stands unchanged. This live demo stops at a typed sign-off, kept for "' \
             in built
         assert "you review and sign off the result" in built
@@ -3849,3 +3849,42 @@ class TestStep5bSignOff:
             assert not [s for s in stale if s in text], path.name
         # The web has no approved or locked state to draw
         assert set(BADGE) == {"draft", "refused", "caution"}
+
+
+# =============================================================================
+# Step 6a: the page files in views/, every address pinned
+# =============================================================================
+
+# Every page's address except Home's ("/"), as published in the README and in
+# posts, written out so that no rename can move one.
+PINNED_ADDRESSES = ["how_the_model_works", "single_what_if", "three_case",
+                    "your_own_data", "how_its_built"]
+
+
+class TestStep6aViews:
+    """A page opened first runs inside Home (the shell, the key gate, the
+    sidebar titles), and every address stays where it was published."""
+
+    def test_6a_no_folder_named_pages(self):
+        # Streamlit switches on its older multipage mode whenever a folder
+        # named pages sits beside the entry script, even an empty one, and in
+        # that mode a page opened first can run without Home.
+        assert [path for path in APP_DIR.rglob("*")
+                if path.is_dir() and path.name == "pages"] == []
+        assert (APP_DIR / "views").is_dir()
+
+    def test_6a_every_address_is_pinned(self, monkeypatch):
+        import streamlit
+        given = {}
+        page = streamlit.Page
+
+        def page_spy(*args, **kwargs):
+            made = page(*args, **kwargs)
+            given[made.title] = kwargs.get("url_path")
+            return made
+
+        monkeypatch.setattr(streamlit, "Page", page_spy)
+        _, seen = _home_with_spies(monkeypatch)
+        assert [p.url_path for p in seen["pages"]] == ["", *PINNED_ADDRESSES]
+        # Each address is given with url_path, not taken from the file name
+        assert [given[p.title] for p in seen["pages"][1:]] == PINNED_ADDRESSES

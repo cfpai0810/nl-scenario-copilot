@@ -230,7 +230,7 @@ data/                            Five input files, reused from Project 2
 docs/                            Flow blueprint and sample outputs
 output/                          Generated files (gitignored)
 tests/
-  test_pipeline.py               299 tests
+  test_pipeline.py               301 tests
   test_signoff.py                9 tests: the sign-off rule
 ```
 
@@ -269,7 +269,7 @@ confirmation.
 
 ## Test suite
 
-308 tests, no real API calls:
+310 tests, no real API calls:
 
 ```bash
 pip install -r requirements-dev.txt

@@ -136,19 +136,29 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 
-PAGES_DIR = Path(__file__).resolve().parent / "pages"
-
-# Each page's address comes from its file name, and links to them are
-# published: rename a title, never a file.
-HOW_MODEL_WORKS = st.Page(str(PAGES_DIR / "how_the_model_works.py"),
+# The view files live in a folder NOT named "pages", so Streamlit's automatic
+# pages/ navigation never triggers and st.navigation() below is the sole nav
+# (with these explicit titles and this order, not filename-derived alphabetical).
+# A folder named pages/ beside this script, even an empty one, switches on that
+# older mode, in which a page opened first can run without this script: no
+# shell, no key gate, file names in the sidebar.
+# Each page's address is pinned with url_path: links to them are published (the
+# README, posts), so a renamed or moved file must not move them.
+VIEWS_DIR = Path(__file__).resolve().parent / "views"
+HOW_MODEL_WORKS = st.Page(str(VIEWS_DIR / "how_the_model_works.py"),
+                          url_path="how_the_model_works",
                           title="How the model works", icon=":material/menu_book:")
-SINGLE_WHAT_IF = st.Page(str(PAGES_DIR / "single_what_if.py"),
+SINGLE_WHAT_IF = st.Page(str(VIEWS_DIR / "single_what_if.py"),
+                         url_path="single_what_if",
                          title="Single what-if", icon=":material/tune:")
-THREE_CASE = st.Page(str(PAGES_DIR / "three_case.py"),
+THREE_CASE = st.Page(str(VIEWS_DIR / "three_case.py"),
+                     url_path="three_case",
                      title="Three-case", icon=":material/analytics:")
-OWN_DATA = st.Page(str(PAGES_DIR / "your_own_data.py"),
+OWN_DATA = st.Page(str(VIEWS_DIR / "your_own_data.py"),
+                   url_path="your_own_data",
                    title="Your own data", icon=":material/upload_file:")
-HOW_ITS_BUILT = st.Page(str(PAGES_DIR / "how_its_built.py"),
+HOW_ITS_BUILT = st.Page(str(VIEWS_DIR / "how_its_built.py"),
+                        url_path="how_its_built",
                         title="How it's built", icon=":material/build:")
 
 pg = st.navigation([

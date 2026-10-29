@@ -1,5 +1,5 @@
 # =============================================================================
-# pages/your_own_data.py: bring-your-own-data documentation (docs page)
+# views/your_own_data.py: bring-your-own-data documentation (docs page)
 # =============================================================================
 # Renders docs/bring_your_own_data.md at runtime (single source) with heading
 # levels shifted to match the other docs pages. No key gate.
