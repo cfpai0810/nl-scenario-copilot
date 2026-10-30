@@ -4110,3 +4110,35 @@ class TestStep6cDiagrams:
         assert [s["fd-title"] for s in flow.stages
                 if s["fd-foot"] == "model, language"] == ["Parse", "Explain"]
         assert not any(s["cross"] for s in flow.stages)
+
+
+# =============================================================================
+# Step 7b: width="stretch" in place of use_container_width
+# =============================================================================
+# Streamlit 1.60 deprecates use_container_width and logs a line each time a
+# table passes it. use_container_width=True set exactly width="stretch", so
+# every table now passes that, and looks and behaves as before.
+
+import ast
+
+PROJECT_DIR = APP_DIR.parent
+
+
+class TestStep7bWidth:
+
+    def test_step7b_no_use_container_width(self):
+        files = (sorted(APP_DIR.rglob("*.py"))
+                 + sorted((PROJECT_DIR / "src").rglob("*.py"))
+                 + [PROJECT_DIR / "main.py"])
+        # The scan covers the pages, not an empty folder
+        assert APP_DIR / "views" / "single_what_if.py" in files
+        found = []
+        for path in files:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call):
+                    found += [(path.relative_to(PROJECT_DIR).as_posix(), kw.lineno)
+                              for kw in node.keywords
+                              if kw.arg == "use_container_width"]
+        assert found == [], "use_container_width is still passed at " + ", ".join(
+            "{}:{}".format(*site) for site in sorted(found))

@@ -139,7 +139,7 @@ with tab_example:
     st.dataframe(pd.DataFrame(ex["spreads"]).rename(columns={
         "driver": "Driver", "pessimistic": "Pessimistic",
         "realistic": "Realistic", "optimistic": "Optimistic"}),
-        use_container_width=True, hide_index=True)
+        width="stretch", hide_index=True)
     st.caption(ex["basis"])
 
     st.markdown("**EBIT by case**")
@@ -150,7 +150,7 @@ with tab_example:
         "Pessimistic": "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit_row["Pessimistic"]),
         "Realistic": "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit_row["Realistic"]),
         "Optimistic": "{}{:,.0f}".format(CURRENCY_SYMBOL, ebit_row["Optimistic"]),
-    }]), use_container_width=True, hide_index=True)
+    }]), width="stretch", hide_index=True)
 
     st.divider()
 
@@ -283,7 +283,7 @@ with tab_live:
 
         edited = st.data_editor(
             display_df, key="tc_spread_editor",
-            use_container_width=True, hide_index=True,
+            width="stretch", hide_index=True,
             column_config={
                 "Driver": st.column_config.TextColumn(disabled=True),
                 "Pessimistic": st.column_config.TextColumn(),
@@ -398,7 +398,7 @@ with tab_live:
             "Realistic": "{}{:,.0f}".format(CURRENCY_SYMBOL, r["Realistic"]),
             "Optimistic": "{}{:,.0f}".format(CURRENCY_SYMBOL, r["Optimistic"]),
         } for r in res["delta_rows"]])
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
 
         st.caption("The realistic case is the base plan, so its figures "
                    "match the base by design.")

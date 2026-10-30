@@ -103,7 +103,7 @@ lines = [
     },
 ]
 
-st.dataframe(pd.DataFrame(lines), use_container_width=True, hide_index=True)
+st.dataframe(pd.DataFrame(lines), width="stretch", hide_index=True)
 
 # ── Common mistakes ──────────────────────────────────────────────────────────
 st.markdown("---")

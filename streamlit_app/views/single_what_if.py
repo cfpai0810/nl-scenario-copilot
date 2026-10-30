@@ -140,7 +140,7 @@ with tab_example:
         "Change": signed_money(d["delta"]),
         "%": "" if d["pct"] is None else "{:+.1%}".format(d["pct"]),
     } for d in EXAMPLE["deltas"]])
-    st.dataframe(ex_df, use_container_width=True, hide_index=True)
+    st.dataframe(ex_df, width="stretch", hide_index=True)
 
     st.divider()
 
@@ -301,7 +301,7 @@ with tab_live:
                 st.caption(_column_caption(vec_op))
                 edited = st.data_editor(
                     display_df, key="permonth_editor",
-                    use_container_width=True, hide_index=True,
+                    width="stretch", hide_index=True,
                     column_config={
                         "Month": st.column_config.TextColumn(disabled=True),
                         "Change": st.column_config.TextColumn()})
@@ -328,7 +328,7 @@ with tab_live:
                             uni_edited = st.data_editor(
                                 uni_display_df,
                                 key="permonth_editor_uni",
-                                use_container_width=True, hide_index=True,
+                                width="stretch", hide_index=True,
                                 column_config={
                                     "Month": st.column_config.TextColumn(
                                         disabled=True),
@@ -543,7 +543,7 @@ with tab_live:
             "Change": signed_money(d["delta"]),
             "%": "" if d["pct"] is None else "{:+.1%}".format(d["pct"]),
         } for d in show])
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
         st.caption("These figures cover the six-month forecast horizon; "
                    "the full-year view below adds the settled H1 actuals.")
 
@@ -562,7 +562,7 @@ with tab_live:
                 return pd.DataFrame(data)
 
             st.dataframe(_qgrid("scenario", lambda v: "{}{:,.0f}".format(CURRENCY_SYMBOL, v)),
-                         use_container_width=True, hide_index=True)
+                         width="stretch", hide_index=True)
             st.caption("Q1-Q2 are actuals; Q3-Q4 are your scenario "
                        "forecast. FY combines them.")
 
@@ -596,15 +596,15 @@ with tab_live:
 
                 st.markdown("**Scenario by month**")
                 st.dataframe(_grid("scenario", lambda v: "{}{:,.0f}".format(CURRENCY_SYMBOL, v)),
-                             use_container_width=True, hide_index=True)
+                             width="stretch", hide_index=True)
 
                 st.markdown("**Change vs base, by month**")
                 st.dataframe(_grid("delta", signed_money),
-                             use_container_width=True, hide_index=True)
+                             width="stretch", hide_index=True)
 
                 st.markdown("**Base by month**")
                 st.dataframe(_grid("base", lambda v: "{}{:,.0f}".format(CURRENCY_SYMBOL, v)),
-                             use_container_width=True, hide_index=True)
+                             width="stretch", hide_index=True)
 
         st.divider()
 
