@@ -179,6 +179,8 @@ def run_scenario(request, base, ask=input, confirm=input):
 # =============================================================================
 # MENU STATE MACHINE — never imported by tests
 # =============================================================================
+import anthropic
+
 from config import (
     DRIVER_DIRECTION, VALUE_DRIVER_TYPES, SCHEDULE_DRIVER_TYPES, PRESET_BANDS,
 )
@@ -461,6 +463,18 @@ def path_single(base, ask=input, confirm=input):
         print("Not a valid choice.")
 
 
+def run_menu_path(path, base):
+    """Run one menu path. A model call that fails, for a missing or rejected
+    key, prints one [ERROR] line, and the menu shows again."""
+    try:
+        path(base)
+    except anthropic.AuthenticationError:
+        # The explain calls pass the SDK's error on; word it as the parser does
+        print("\n[ERROR] Authentication failed. Check ANTHROPIC_API_KEY in .env.")
+    except RuntimeError as exc:
+        print("\n[ERROR] {}".format(" ".join(str(exc).split())))
+
+
 if __name__ == "__main__":
     base = load_base_model()
 
@@ -477,8 +491,8 @@ if __name__ == "__main__":
             print("Goodbye.")
             break
         elif choice == "1":
-            path_single(base)
+            run_menu_path(path_single, base)
         elif choice == "2":
-            path_three_case(base)
+            run_menu_path(path_three_case, base)
         else:
             print("Not a valid choice.")

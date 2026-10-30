@@ -21,8 +21,9 @@
 #   11. Scenario JSON parsing
 #   12. Explainer helpers
 #
-# No real API calls. The menus are deliberately untested: interactivity is
-# injected through ask and confirm, so the pipeline is exercised directly.
+# No real API calls. The menus are not unit tested: interactivity is injected
+# through ask and confirm, so the pipeline is exercised directly. The Step 7c
+# tests run main.py itself, for a missing or rejected key.
 # =============================================================================
 
 import sys
@@ -4142,3 +4143,102 @@ class TestStep7bWidth:
                               if kw.arg == "use_container_width"]
         assert found == [], "use_container_width is still passed at " + ", ".join(
             "{}:{}".format(*site) for site in sorted(found))
+
+
+# =============================================================================
+# Step 7c: a missing or rejected key on the command line
+# =============================================================================
+# A failed model call in the menu prints one [ERROR] line and the menu shows
+# again. The tests run main.py itself, its answers typed on stdin and ending
+# with q, so input() never meets the end of the stream. Each run sets
+# ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL itself (load_dotenv never overrides
+# a variable already set), so no run can reach the real API, even beside a
+# real .env: a missing key is the empty string, a rejected key is the dummy
+# key, and the base address is a local stand-in that answers 401.
+
+import json
+import os
+import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+# The answers that reach each model call on the sample data, then q. Single
+# what-if: the first example, whose first call is the parse. Three-case:
+# Revenue, the derived cases accepted and run, whose call is the explanation.
+MENU_ANSWERS = {
+    "single": "1\na\nq\n",
+    "three_case": "2\n1\n1\ny\ny\nq\n",
+}
+_MENU_TITLE = "NL SCENARIO MODELLING COPILOT"
+_KEY_REJECTED = json.dumps({"type": "error", "error": {
+    "type": "authentication_error", "message": "invalid x-api-key"}}).encode()
+
+
+@pytest.fixture
+def rejecting_api():
+    """A local stand-in for the API that answers every POST with 401, as the
+    API does for a key it rejects. Gives its address and the paths sent to it."""
+    posted = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            posted.append(self.path)
+            self.send_response(401)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(_KEY_REJECTED)))
+            self.end_headers()
+            self.wfile.write(_KEY_REJECTED)
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield "http://127.0.0.1:{}".format(server.server_address[1]), posted
+    server.shutdown()
+    server.server_close()
+    thread.join()
+
+
+def _run_menu(answers, key, base_url):
+    """python main.py from the project folder, with the answers on stdin and
+    only the given key: no other Anthropic credential is passed on."""
+    env = dict(os.environ, ANTHROPIC_API_KEY=key, ANTHROPIC_BASE_URL=base_url,
+               PYTHONIOENCODING="utf-8")
+    env.pop("ANTHROPIC_AUTH_TOKEN", None)
+    return subprocess.run([sys.executable, "main.py"], cwd=PROJECT_DIR,
+                          input=answers, capture_output=True, text=True,
+                          encoding="utf-8", env=env, timeout=300)
+
+
+def _check_back_at_menu(run, error):
+    """One [ERROR] line and no traceback, then the menu again, and q ends the
+    run with Goodbye and status 0."""
+    both = run.stdout + run.stderr
+    assert [line for line in both.splitlines() if line.startswith("[ERROR]")] == [error]
+    assert "Traceback" not in both
+    assert run.stdout.count(_MENU_TITLE) == 2
+    assert run.stdout.index(error) < run.stdout.rindex(_MENU_TITLE)
+    assert run.stdout.rstrip().endswith("Goodbye.")
+    assert run.returncode == 0
+
+
+class TestStep7cCommandLineKey:
+
+    @pytest.mark.parametrize("path", ["single", "three_case"])
+    def test_7c_missing_key_returns_to_menu(self, path, rejecting_api):
+        url, posted = rejecting_api
+        run = _run_menu(MENU_ANSWERS[path], "", url)
+        _check_back_at_menu(run, "[ERROR] No Anthropic client available.")
+        assert posted == [], "with no key, nothing is sent"
+
+    @pytest.mark.parametrize("path", ["single", "three_case"])
+    def test_7c_rejected_key_returns_to_menu(self, path, rejecting_api):
+        url, posted = rejecting_api
+        run = _run_menu(MENU_ANSWERS[path], STAND_IN_KEY, url)
+        _check_back_at_menu(
+            run, "[ERROR] Authentication failed. Check ANTHROPIC_API_KEY in .env.")
+        # The one model call reached the stand-in, and only once
+        assert posted == ["/v1/messages"]
