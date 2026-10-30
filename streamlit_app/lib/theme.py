@@ -11,6 +11,8 @@
 # in tables). Both are free Google Fonts, loaded by CSS import.
 # =============================================================================
 
+from streamlit_app.lib.flow_diagram import flow_css
+
 # Core palette — identical to the PDF (step6_explainer.py)
 DARK_BLUE  = "#1A3A5C"
 MID_BLUE   = "#2D6A9F"
@@ -165,6 +167,7 @@ def inject_css():
         font-size: 0.85rem;
         line-height: 1.45;
       }}
+{flow_css(DARK_BLUE, MUTED, RULE)}
     </style>
     """
 
