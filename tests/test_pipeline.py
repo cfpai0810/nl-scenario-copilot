@@ -23,7 +23,7 @@
 #
 # No real API calls. The menus are not unit tested: interactivity is injected
 # through ask and confirm, so the pipeline is exercised directly. The Step 7c
-# tests run main.py itself, for a missing or rejected key.
+# tests run main.py itself, for a failed model call.
 # =============================================================================
 
 import sys
@@ -4146,32 +4146,50 @@ class TestStep7bWidth:
 
 
 # =============================================================================
-# Step 7c: a missing or rejected key on the command line
+# Step 7c: a failed model call on the command line
 # =============================================================================
 # A failed model call in the menu prints one [ERROR] line and the menu shows
 # again. The tests run main.py itself, its answers typed on stdin and ending
 # with q, so input() never meets the end of the stream. Each run sets
 # ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL itself (load_dotenv never overrides
 # a variable already set), so no run can reach the real API, even beside a
-# real .env: a missing key is the empty string, a rejected key is the dummy
-# key, and the base address is a local stand-in that answers 401.
+# real .env: a missing key is the empty string, any other run uses the dummy
+# key, and the base address is a local stand-in (one answers 401, one 429) or
+# a closed local port.
 
 import json
 import os
+import socket
 import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # The answers that reach each model call on the sample data, then q. Single
-# what-if: the first example, whose first call is the parse. Three-case:
-# Revenue, the derived cases accepted and run, whose call is the explanation.
+# what-if: the first example, whose first call is the parse; confirmed, its
+# next call is the explanation. Three-case: Revenue, the derived cases
+# accepted and run, whose call is the explanation.
 MENU_ANSWERS = {
     "single": "1\na\nq\n",
+    "single_confirmed": "1\na\ny\nq\n",
     "three_case": "2\n1\n1\ny\ny\nq\n",
 }
 _MENU_TITLE = "NL SCENARIO MODELLING COPILOT"
 _KEY_REJECTED = json.dumps({"type": "error", "error": {
     "type": "authentication_error", "message": "invalid x-api-key"}}).encode()
+# The server's own words for a 429, which the menu must never print
+_LIMITED_TEXT = "stand-in server text: rate limit reached for this key"
+_RATE_LIMITED = json.dumps({"type": "error", "error": {
+    "type": "rate_limit_error", "message": _LIMITED_TEXT}}).encode()
+# A valid reply to the parse of the first example, so the next call is reached
+_PARSE_REPLY = json.dumps({
+    "id": "msg_stand_in", "type": "message", "role": "assistant",
+    "model": "claude-sonnet-4-6", "stop_reason": "end_turn", "stop_sequence": None,
+    "usage": {"input_tokens": 1, "output_tokens": 1},
+    "content": [{"type": "text", "text": "```json\n" + json.dumps({
+        "changes": [{"target": "Marketing Spend", "operation": "scale_schedule",
+                     "value": 0.8, "periods": "all"}],
+        "ambiguity_note": "", "confidence": "high"}) + "\n```"}],
+}).encode()
 
 
 @pytest.fixture
@@ -4200,6 +4218,56 @@ def rejecting_api():
     server.shutdown()
     server.server_close()
     thread.join()
+
+
+@pytest.fixture
+def limiting_api():
+    """A local stand-in for the API that answers the parse with a valid
+    scenario and every other call with 429, as the API does for a key over
+    its rate limit. retry-after-ms keeps the SDK's own retries to a
+    millisecond each. Gives its address and the kind of each call sent."""
+    posted = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+            is_parse = body.get("system", "").startswith(
+                "You translate a finance what-if request")
+            posted.append("parse" if is_parse else "explain")
+            reply = _PARSE_REPLY if is_parse else _RATE_LIMITED
+            self.send_response(200 if is_parse else 429)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(reply)))
+            if not is_parse:
+                self.send_header("retry-after-ms", "1")
+            self.end_headers()
+            self.wfile.write(reply)
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield "http://127.0.0.1:{}".format(server.server_address[1]), posted
+    server.shutdown()
+    server.server_close()
+    thread.join()
+
+
+@pytest.fixture
+def closed_port_url():
+    """The address of a local port nothing listens on: bound, then closed."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return "http://127.0.0.1:{}".format(port)
+
+
+def _plain_error(code):
+    """The web app's line for a failed model call, without its backticks."""
+    return "[ERROR] " + model_failure_message(code).replace("`", "")
 
 
 def _run_menu(answers, key, base_url):
@@ -4231,14 +4299,35 @@ class TestStep7cCommandLineKey:
     def test_7c_missing_key_returns_to_menu(self, path, rejecting_api):
         url, posted = rejecting_api
         run = _run_menu(MENU_ANSWERS[path], "", url)
-        _check_back_at_menu(run, "[ERROR] No Anthropic client available.")
+        _check_back_at_menu(run, "[ERROR] No Anthropic client available. "
+                                 "Set ANTHROPIC_API_KEY in your .env.")
         assert posted == [], "with no key, nothing is sent"
 
     @pytest.mark.parametrize("path", ["single", "three_case"])
     def test_7c_rejected_key_returns_to_menu(self, path, rejecting_api):
         url, posted = rejecting_api
         run = _run_menu(MENU_ANSWERS[path], STAND_IN_KEY, url)
-        _check_back_at_menu(
-            run, "[ERROR] Authentication failed. Check ANTHROPIC_API_KEY in .env.")
+        _check_back_at_menu(run, _plain_error("key_rejected"))
         # The one model call reached the stand-in, and only once
         assert posted == ["/v1/messages"]
+
+    @pytest.mark.parametrize("path", ["single_confirmed", "three_case"])
+    def test_7c_rate_limit_returns_to_menu(self, path, limiting_api):
+        """A 429 on the explanation reaches main.py as the SDK's own error,
+        once the SDK's retries are spent."""
+        url, posted = limiting_api
+        run = _run_menu(MENU_ANSWERS[path], STAND_IN_KEY, url)
+        _check_back_at_menu(run, _plain_error("rate_limited"))
+        both = run.stdout + run.stderr
+        assert _LIMITED_TEXT not in both
+        assert STAND_IN_KEY not in both
+        # The single what-if was parsed; the explanation was asked, then retried
+        parse = ["parse"] if path == "single_confirmed" else []
+        assert posted == parse + ["explain"] * (anthropic.DEFAULT_MAX_RETRIES + 1)
+
+    def test_7c_dropped_connection_returns_to_menu(self, closed_port_url):
+        """Nothing answers at the base address, so the parse ends in the SDK's
+        connection error, which the parser passes on unwrapped."""
+        run = _run_menu(MENU_ANSWERS["single"], STAND_IN_KEY, closed_port_url)
+        _check_back_at_menu(run, _plain_error("service_unavailable"))
+        assert STAND_IN_KEY not in run.stdout + run.stderr

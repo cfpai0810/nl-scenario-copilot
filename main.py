@@ -184,6 +184,9 @@ import anthropic
 from config import (
     DRIVER_DIRECTION, VALUE_DRIVER_TYPES, SCHEDULE_DRIVER_TYPES, PRESET_BANDS,
 )
+# The web app's plain wording for a failed model call; errors.py needs only
+# the SDK and config, so the command line loads no Streamlit
+from streamlit_app.lib.errors import failure_code, model_failure_message
 from src.step7_scenario_spread import (
     derive_spread, preset_spread, manual_spread, history_rates_for,
 )
@@ -463,16 +466,37 @@ def path_single(base, ask=input, confirm=input):
         print("Not a valid choice.")
 
 
+NO_CLIENT = "No Anthropic client available."
+
+
+def menu_error_line(exc):
+    """The one [ERROR] line for a failed model call. Never the server's own
+    message, and never the key."""
+    # An SDK error, raw from the explain calls or as the cause of the parser's
+    # RuntimeError: the web app's line, without its Markdown backticks
+    code = failure_code(exc)
+    if code is None and isinstance(exc, anthropic.APIError):
+        # An SDK error with no code of its own, such as a reply that fails the
+        # SDK's checks: the model replied, but not in the form asked for
+        code = "unreadable_reply"
+    if code is not None:
+        return "[ERROR] {}".format(model_failure_message(code).replace("`", ""))
+    # Any other RuntimeError keeps its own text, on one line; a missing key
+    # also says what to do
+    text = " ".join(str(exc).split())
+    if text == NO_CLIENT:
+        text += " Set ANTHROPIC_API_KEY in your .env."
+    return "[ERROR] {}".format(text)
+
+
 def run_menu_path(path, base):
     """Run one menu path. A model call that fails, for a missing or rejected
-    key, prints one [ERROR] line, and the menu shows again."""
+    key or any other error the SDK reports (a rate limit, a dropped
+    connection), prints one [ERROR] line, and the menu shows again."""
     try:
         path(base)
-    except anthropic.AuthenticationError:
-        # The explain calls pass the SDK's error on; word it as the parser does
-        print("\n[ERROR] Authentication failed. Check ANTHROPIC_API_KEY in .env.")
-    except RuntimeError as exc:
-        print("\n[ERROR] {}".format(" ".join(str(exc).split())))
+    except (anthropic.APIError, RuntimeError) as exc:
+        print("\n" + menu_error_line(exc))
 
 
 if __name__ == "__main__":

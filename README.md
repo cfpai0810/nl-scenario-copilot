@@ -230,7 +230,7 @@ data/                            Five input files, reused from Project 2
 docs/                            Flow blueprint and sample outputs
 output/                          Generated files (gitignored)
 tests/
-  test_pipeline.py               310 tests
+  test_pipeline.py               313 tests
   test_signoff.py                9 tests: the sign-off rule
 ```
 
@@ -269,7 +269,7 @@ confirmation.
 
 ## Test suite
 
-319 tests, no real API calls:
+322 tests, no real API calls:
 
 ```bash
 pip install -r requirements-dev.txt
@@ -286,9 +286,9 @@ rule and section.
 The strongest test asserts that the realistic case reproduces the base run
 line for line, which proves the case machinery is clean. The menus are not
 unit tested: interactivity is injected through `ask` and `confirm`, so the
-pipeline is exercised directly. Four tests run `main.py` itself, to check
-that a missing or rejected key prints one `[ERROR]` line and the menu shows
-again.
+pipeline is exercised directly. Seven tests run `main.py` itself, to check
+that a failed model call (a missing or rejected key, a rate limit, a dropped
+connection) prints one `[ERROR]` line and the menu shows again.
 
 ---
 
